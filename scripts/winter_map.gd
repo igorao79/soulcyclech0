@@ -65,6 +65,28 @@ func get_bell_position() -> Vector2:
 	return _cell_center(Vector2i(4, 7))
 
 
+func get_footstep_surface(world_position: Vector2) -> StringName:
+	var cell := Vector2i(
+		floori(world_position.x / TILE_SIZE),
+		floori(world_position.y / TILE_SIZE)
+	)
+	if (
+		cell.x < 0
+		or cell.y < 0
+		or cell.x >= GRID_WIDTH
+		or cell.y >= GRID_HEIGHT
+	):
+		return &"ground"
+
+	match int(tiles[cell.y][cell.x]):
+		Tile.BRIDGE:
+			return &"wood"
+		Tile.PATH:
+			return &"snow"
+		_:
+			return &"ground"
+
+
 func _generate_layout() -> void:
 	tiles.clear()
 	for y in range(GRID_HEIGHT):

@@ -6,11 +6,37 @@ signal character_changed(index: int)
 const CharacterCatalog := preload("res://scripts/dialogue/character_catalog.gd")
 const FRAME_SIZE := 64
 const SPEED := 145.0
+const FOOTSTEP_DISTANCE := 52.0
+const FOOTSTEP_SNOW := [
+	preload("res://assets/audio/footsteps/snow_01.wav"),
+	preload("res://assets/audio/footsteps/snow_02.wav"),
+	preload("res://assets/audio/footsteps/snow_03.wav"),
+]
+const FOOTSTEP_WOOD := [
+	preload("res://assets/audio/footsteps/wood_01.wav"),
+	preload("res://assets/audio/footsteps/wood_02.wav"),
+	preload("res://assets/audio/footsteps/wood_03.wav"),
+]
+const FOOTSTEP_GROUND := [
+	preload("res://assets/audio/footsteps/ground_01.wav"),
+	preload("res://assets/audio/footsteps/ground_02.wav"),
+	preload("res://assets/audio/footsteps/ground_03.wav"),
+]
 
 var can_move := true
 var facing := "down"
 var character_index := 0
 var animated_sprite: AnimatedSprite2D
+var footstep_players: Array[AudioStreamPlayer] = []
+var footstep_surface_resolver: Callable
+var footstep_distance := 0.0
+var footstep_voice_index := 0
+var last_footstep_indices := {
+	&"snow": -1,
+	&"wood": -1,
+	&"ground": -1,
+}
+var footstep_random := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
@@ -20,6 +46,7 @@ func _ready() -> void:
 	_install_input_actions()
 	_build_sprite()
 	_build_collision()
+	_build_footsteps()
 	z_index = 10
 
 
@@ -34,7 +61,9 @@ func _physics_process(_delta: float) -> void:
 		direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
 	velocity = direction * SPEED
+	var previous_position := global_position
 	move_and_slide()
+	_update_footsteps(global_position.distance_to(previous_position))
 	_update_animation(direction)
 	z_index = int(global_position.y)
 
@@ -102,6 +131,68 @@ func _build_collision() -> void:
 	collider.position = Vector2(0, 20)
 	collider.shape = shape
 	add_child(collider)
+
+
+func _build_footsteps() -> void:
+	footstep_random.randomize()
+	for voice_index in range(2):
+		var footstep_player := AudioStreamPlayer.new()
+		footstep_player.name = "FootstepPlayer%d" % (voice_index + 1)
+		add_child(footstep_player)
+		footstep_players.append(footstep_player)
+
+
+func set_footstep_surface_resolver(resolver: Callable) -> void:
+	footstep_surface_resolver = resolver
+
+
+func _update_footsteps(moved_distance: float) -> void:
+	if moved_distance < 0.05:
+		return
+
+	footstep_distance += moved_distance
+	if footstep_distance < FOOTSTEP_DISTANCE:
+		return
+
+	footstep_distance = fmod(footstep_distance, FOOTSTEP_DISTANCE)
+	_play_footstep()
+
+
+func _play_footstep() -> void:
+	var surface := &"ground"
+	if footstep_surface_resolver.is_valid():
+		surface = StringName(
+			footstep_surface_resolver.call(global_position + Vector2(0, 20))
+		)
+
+	var sounds: Array
+	match surface:
+		&"snow":
+			sounds = FOOTSTEP_SNOW
+		&"wood":
+			sounds = FOOTSTEP_WOOD
+		_:
+			surface = &"ground"
+			sounds = FOOTSTEP_GROUND
+
+	var sound_index := footstep_random.randi_range(0, sounds.size() - 1)
+	var previous_index: int = last_footstep_indices.get(surface, -1)
+	if sound_index == previous_index:
+		sound_index = (sound_index + 1) % sounds.size()
+	last_footstep_indices[surface] = sound_index
+
+	var footstep_player := footstep_players[footstep_voice_index]
+	footstep_voice_index = (footstep_voice_index + 1) % footstep_players.size()
+	footstep_player.stream = sounds[sound_index]
+	footstep_player.pitch_scale = footstep_random.randf_range(0.98, 1.02)
+	match surface:
+		&"snow":
+			footstep_player.volume_db = -3.0
+		&"wood":
+			footstep_player.volume_db = -4.0
+		_:
+			footstep_player.volume_db = -4.5
+	footstep_player.play()
 
 
 func _update_animation(direction: Vector2) -> void:

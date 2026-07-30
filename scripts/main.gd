@@ -66,6 +66,7 @@ func _spawn_player() -> void:
 	player = PlayerScene.new()
 	player.name = "Player"
 	player.position = winter_map.get_spawn_position()
+	player.set_footstep_surface_resolver(winter_map.get_footstep_surface)
 	add_child(player)
 
 	var camera := Camera2D.new()
@@ -155,7 +156,7 @@ func _build_music() -> void:
 	music = AudioStreamPlayer.new()
 	music.name = "WinterTheme"
 	music.stream = looped_theme
-	music.volume_db = -14.0
+	music.volume_db = -20.0
 	add_child(music)
 	music.play()
 
