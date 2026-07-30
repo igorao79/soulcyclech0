@@ -6,17 +6,20 @@ const DialogueScene := preload("res://scripts/dialogue_ui.gd")
 const BattleSystemScene := preload("res://scripts/battle/battle_system.gd")
 const WinterMapScene := preload("res://scripts/winter_map.gd")
 const CHAPEL_TEXTURE := preload("res://assets/props/chapel.png")
+const WINTER_THEME := preload("res://assets/music/snowbound_crossroads.ogg")
 
 var winter_map: SoulcycleWinterMap
 var player: SoulcyclePlayer
 var dialogue: SoulcycleDialogue
 var battle: SoulcycleBattleSystem
 var npc: SoulcycleNpc
+var music: AudioStreamPlayer
 
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color("#0c1422"))
 	_build_lighting()
+	_build_music()
 	_build_map()
 	_spawn_player()
 	_spawn_npc()
@@ -143,6 +146,18 @@ func _build_lighting() -> void:
 	var night_tint := CanvasModulate.new()
 	night_tint.color = Color("#b8c6e4")
 	add_child(night_tint)
+
+
+func _build_music() -> void:
+	var looped_theme := WINTER_THEME.duplicate() as AudioStreamOggVorbis
+	looped_theme.loop = true
+
+	music = AudioStreamPlayer.new()
+	music.name = "WinterTheme"
+	music.stream = looped_theme
+	music.volume_db = -14.0
+	add_child(music)
+	music.play()
 
 
 func _create_warm_light(position: Vector2, energy: float, texture_scale: float) -> PointLight2D:
