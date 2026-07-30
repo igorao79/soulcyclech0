@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="SoulcycleDialogueTheme" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/dialogue_theme.gd" id="1_theme"]
+[ext_resource type="FontFile" path="res://assets/fonts/CormorantGaramond.ttf" id="2_font"]
+
+[resource]
+script = ExtResource("1_theme")
+theme_id = &"crimson"
+font = ExtResource("2_font")
+panel_color = Color(0.045, 0.028, 0.066, 0.97)
+panel_border_color = Color(0.56, 0.16, 0.25, 1)
+name_plate_color = Color(0.10, 0.045, 0.075, 0.99)
+name_color = Color(0.93, 0.37, 0.47, 1)
+text_color = Color(0.96, 0.92, 0.87, 1)
+indicator_color = Color(0.92, 0.67, 0.73, 1)
+dimmer_color = Color(0.012, 0.008, 0.024, 0.46)
+border_width = 2
+corner_radius = 7
+shadow_size = 16
+speaker_font_size = 28
+text_font_size = 26

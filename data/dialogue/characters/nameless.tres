@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SoulcycleCharacterProfile" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/dialogue/character_profile.gd" id="1_profile"]
+[ext_resource type="Texture2D" path="res://assets/sprites/player_sheet.png" id="2_world"]
+[ext_resource type="Texture2D" path="res://assets/portraits/nameless_dialogue.png" id="3_portrait"]
+
+[resource]
+script = ExtResource("1_profile")
+character_id = &"nameless"
+display_name = "Безымянный"
+world_sprite_sheet = ExtResource("2_world")
+dialogue_portrait = ExtResource("3_portrait")
+dialogue_theme_id = &"crimson"
+portrait_anchor = 1
+portrait_scale = 1.04
+portrait_offset = Vector2(-12, 14)

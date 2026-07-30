@@ -1,0 +1,16 @@
+# Godot editor cache and local state
+.godot/
+.DS_Store
+
+# Generated intermediate image sources
+assets/**/*_chroma.png*
+assets/**/*_full.png*
+assets/**/*_source.png*
+assets/**/*_generated.png*
+assets/**/*_backup.png*
+
+# Local captures and temporary files
+*.tmp
+*.log
+*.swp
+*~
