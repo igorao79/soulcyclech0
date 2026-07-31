@@ -18,8 +18,8 @@ const FOOTSTEP_SNOW := [
 	preload("res://assets/audio/footsteps/snow_03.wav"),
 ]
 const VIEWPORT_SIZE := Vector2(960, 540)
-const TRAVEL_DURATION := 9.0
-const STEP_INTERVAL := 0.5
+const TRAVEL_DURATION := 12.5
+const STEP_INTERVAL := 0.73
 const WALKER_START_X := -100.0
 const WALKER_END_X := 1060.0
 const WALKER_BASELINE_Y := 448.0
@@ -231,7 +231,7 @@ func _create_walk_frames() -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation(&"default")
 	frames.add_animation(&"walk")
-	frames.set_animation_speed(&"walk", 8.0)
+	frames.set_animation_speed(&"walk", 5.5)
 	frames.set_animation_loop(&"walk", true)
 	for frame_texture in ILLUSTRATED_WALK_FRAMES:
 		frames.add_frame(&"walk", frame_texture)
