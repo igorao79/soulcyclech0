@@ -35,6 +35,7 @@ enum Tile {
 	BRIDGE,
 }
 
+var location_id: StringName = &"crossroads"
 var tiles: Array[Array] = []
 
 
@@ -50,7 +51,17 @@ func _ready() -> void:
 
 
 func get_spawn_position() -> Vector2:
+	if location_id == &"northern_grove":
+		return _cell_center(Vector2i(15, 17))
 	return _cell_center(Vector2i(4, 18))
+
+
+func get_arrival_position(from_edge: StringName) -> Vector2:
+	if from_edge == &"north":
+		return _cell_center(Vector2i(15, 3))
+	if from_edge == &"south":
+		return _cell_center(Vector2i(15, 17))
+	return get_spawn_position()
 
 
 func get_npc_position() -> Vector2:
@@ -63,6 +74,20 @@ func get_chapel_position() -> Vector2:
 
 func get_bell_position() -> Vector2:
 	return _cell_center(Vector2i(4, 7))
+
+
+func get_travel_exit(world_position: Vector2) -> StringName:
+	var cell := Vector2i(
+		floori(world_position.x / TILE_SIZE),
+		floori(world_position.y / TILE_SIZE)
+	)
+	if location_id == &"crossroads":
+		if cell.y <= 1 and cell.x in range(13, 18):
+			return &"north"
+	elif location_id == &"northern_grove":
+		if cell.y >= 18 and cell.x in range(13, 18):
+			return &"south"
+	return &""
 
 
 func get_footstep_surface(world_position: Vector2) -> StringName:
@@ -94,6 +119,10 @@ func _generate_layout() -> void:
 		row.resize(GRID_WIDTH)
 		row.fill(Tile.FOREST)
 		tiles.append(row)
+
+	if location_id == &"northern_grove":
+		_generate_northern_grove_layout()
+		return
 
 	# Main route: southern entrance -> bridge -> clearing -> northern exit.
 	_carve_route([
@@ -127,6 +156,33 @@ func _generate_layout() -> void:
 	for y in range(15, 17):
 		for x in range(7, 10):
 			tiles[y][x] = Tile.BRIDGE
+
+
+func _generate_northern_grove_layout() -> void:
+	# A winding, more enclosed route with two quiet dead ends.
+	_carve_route([
+		Vector2i(15, 19), Vector2i(15, 17), Vector2i(12, 15),
+		Vector2i(11, 12), Vector2i(14, 9), Vector2i(14, 6),
+		Vector2i(18, 4), Vector2i(18, 2)
+	], 1)
+	_carve_circle(Vector2i(12, 14), 2)
+	_carve_circle(Vector2i(14, 9), 3)
+	_carve_circle(Vector2i(18, 4), 2)
+	_carve_route([
+		Vector2i(12, 11), Vector2i(9, 10), Vector2i(7, 8)
+	], 1)
+	_carve_route([
+		Vector2i(16, 9), Vector2i(20, 10), Vector2i(23, 11)
+	], 1)
+	_carve_route([
+		Vector2i(15, 6), Vector2i(12, 4), Vector2i(10, 3)
+	], 1)
+
+	# A frozen pond shapes the western dead end without blocking the route.
+	for y in range(11, 14):
+		for x in range(3, 8):
+			if Vector2(x - 5, y - 12).length() <= 2.35:
+				tiles[y][x] = Tile.RIVER
 
 
 func _build_tile_layers() -> void:
@@ -171,6 +227,10 @@ func _build_tile_layers() -> void:
 
 
 func _build_path_ribbons() -> void:
+	if location_id == &"northern_grove":
+		_build_northern_grove_path_ribbons()
+		return
+
 	var main_route: Array[Vector2i] = [
 		Vector2i(4, 19), Vector2i(4, 18), Vector2i(8, 17),
 		Vector2i(8, 14), Vector2i(11, 12), Vector2i(14, 10),
@@ -204,6 +264,26 @@ func _build_path_ribbons() -> void:
 		[Vector2i(11, 10), Vector2i(14, 10), Vector2i(17, 10)],
 		286.0
 	)
+
+
+func _build_northern_grove_path_ribbons() -> void:
+	_add_path_ribbon([
+		Vector2i(15, 19), Vector2i(15, 17), Vector2i(12, 15),
+		Vector2i(11, 12), Vector2i(14, 9), Vector2i(14, 6),
+		Vector2i(18, 4), Vector2i(18, 2)
+	], 148.0)
+	_add_path_ribbon([
+		Vector2i(12, 11), Vector2i(9, 10), Vector2i(7, 8)
+	], 142.0)
+	_add_path_ribbon([
+		Vector2i(16, 9), Vector2i(20, 10), Vector2i(23, 11)
+	], 142.0)
+	_add_path_ribbon([
+		Vector2i(15, 6), Vector2i(12, 4), Vector2i(10, 3)
+	], 138.0)
+	_add_path_ribbon([
+		Vector2i(11, 9), Vector2i(14, 9), Vector2i(17, 9)
+	], 224.0)
 
 
 func _add_path_ribbon(cells: Array[Vector2i], width: float) -> void:
@@ -254,6 +334,10 @@ func _build_forest_canopy() -> void:
 
 
 func _build_path_decorations() -> void:
+	if location_id == &"northern_grove":
+		_build_northern_grove_path_decorations()
+		return
+
 	# Sparse edge vegetation guides the eye without cluttering the path.
 	_add_prop(PROP_BERRIES, _cell_center(Vector2i(6, 8)) + Vector2(-24, 27), 0.66)
 	_add_prop(PROP_BERRIES, _cell_center(Vector2i(11, 5)) + Vector2(26, 27), 0.60)
@@ -265,7 +349,21 @@ func _build_path_decorations() -> void:
 	_add_footprint_trail(_cell_center(Vector2i(17, 9)), _cell_center(Vector2i(22, 8)), 10)
 
 
+func _build_northern_grove_path_decorations() -> void:
+	_add_prop(PROP_BERRIES, _cell_center(Vector2i(13, 16)) + Vector2(-22, 27), 0.62)
+	_add_prop(PROP_BERRIES, _cell_center(Vector2i(10, 11)) + Vector2(24, 27), 0.58)
+	_add_prop(PROP_BERRIES, _cell_center(Vector2i(20, 9)) + Vector2(-25, 27), 0.62)
+	_add_prop(PROP_BERRIES, _cell_center(Vector2i(12, 4)) + Vector2(22, 27), 0.56)
+	_add_footprint_trail(_cell_center(Vector2i(15, 17)), _cell_center(Vector2i(12, 15)), 8)
+	_add_footprint_trail(_cell_center(Vector2i(12, 12)), _cell_center(Vector2i(14, 9)), 7)
+	_add_footprint_trail(_cell_center(Vector2i(15, 6)), _cell_center(Vector2i(18, 4)), 7)
+
+
 func _build_landmark_sets() -> void:
+	if location_id == &"northern_grove":
+		_build_northern_grove_landmarks()
+		return
+
 	# Starting approach and bridge: readable navigation silhouette.
 	_add_prop(PROP_SIGN, _cell_center(Vector2i(5, 17)) + Vector2(-18, 28), 0.68)
 	_add_prop(PROP_LANTERN, _cell_center(Vector2i(7, 17)) + Vector2(-21, 31), 0.72)
@@ -308,7 +406,39 @@ func _build_landmark_sets() -> void:
 	_add_prop(PROP_ROCKS, _cell_center(Vector2i(6, 12)) + Vector2(-22, 31), 0.54)
 
 
+func _build_northern_grove_landmarks() -> void:
+	# Southern arrival: a small lit trailhead.
+	_add_prop(PROP_SIGN, _cell_center(Vector2i(14, 17)) + Vector2(-22, 28), 0.66)
+	_add_prop(PROP_LANTERN, _cell_center(Vector2i(16, 17)) + Vector2(22, 31), 0.68)
+	_add_prop(PROP_STUMP, _cell_center(Vector2i(12, 15)) + Vector2(-24, 31), 0.56)
+
+	# Western pond: abandoned cart and an old well form a readable destination.
+	_add_prop(PROP_WELL, _cell_center(Vector2i(7, 8)) + Vector2(-6, 34), 0.70, Vector2(58, 34))
+	_add_prop(PROP_CART, _cell_center(Vector2i(8, 9)) + Vector2(24, 33), 0.58, Vector2(50, 26))
+	_add_prop(PROP_LANTERN, _cell_center(Vector2i(9, 10)) + Vector2(-22, 31), 0.62)
+	_add_prop(PROP_ROCKS, _cell_center(Vector2i(6, 10)) + Vector2(18, 31), 0.50)
+
+	# Central grove: restrained ring of details keeps the walking space open.
+	_add_prop(PROP_STUMP, _cell_center(Vector2i(12, 9)) + Vector2(-20, 31), 0.62)
+	_add_prop(PROP_ROCKS, _cell_center(Vector2i(16, 10)) + Vector2(24, 31), 0.52)
+	_add_prop(PROP_LANTERN, _cell_center(Vector2i(15, 7)) + Vector2(22, 31), 0.62)
+
+	# Eastern dead end: a forgotten grave cluster among the trees.
+	for grave_cell in [Vector2i(22, 10), Vector2i(23, 11), Vector2i(22, 12)]:
+		_add_prop(PROP_GRAVE, _cell_center(grave_cell) + Vector2(0, 30), 0.56)
+	_add_prop(PROP_FENCE, _cell_center(Vector2i(21, 11)) + Vector2(-12, 31), 0.64, Vector2.ZERO, -0.08)
+
+	# Northern approach: colder and more sparse.
+	_add_prop(PROP_SIGN, _cell_center(Vector2i(17, 4)) + Vector2(-22, 29), 0.62)
+	_add_prop(PROP_ROCKS, _cell_center(Vector2i(10, 3)) + Vector2(18, 31), 0.56)
+	_add_prop(PROP_LANTERN, _cell_center(Vector2i(18, 3)) + Vector2(22, 31), 0.60)
+
+
 func _build_river_details() -> void:
+	if location_id == &"northern_grove":
+		_build_northern_grove_pond_details()
+		return
+
 	for x in [1, 4, 12, 16, 20, 26, 28]:
 		var crack := Line2D.new()
 		var origin := _cell_center(Vector2i(x, 15))
@@ -325,6 +455,22 @@ func _build_river_details() -> void:
 
 	for x in [2, 13, 18, 27]:
 		_add_prop(PROP_ROCKS, _cell_center(Vector2i(x, 14)) + Vector2(0, 34), 0.42)
+
+
+func _build_northern_grove_pond_details() -> void:
+	for cell in [Vector2i(4, 12), Vector2i(5, 11), Vector2i(6, 12), Vector2i(5, 13)]:
+		var crack := Line2D.new()
+		var origin := _cell_center(cell)
+		crack.points = PackedVector2Array([
+			origin + Vector2(-18, -7),
+			origin + Vector2(-5, 1),
+			origin + Vector2(4, -4),
+			origin + Vector2(17, 8)
+		])
+		crack.width = 2
+		crack.default_color = Color(0.48, 0.68, 0.92, 0.62)
+		crack.z_index = -68
+		add_child(crack)
 
 
 func _add_prop(

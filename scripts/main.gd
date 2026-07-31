@@ -5,15 +5,20 @@ const NpcScene := preload("res://scripts/npc.gd")
 const DialogueScene := preload("res://scripts/dialogue_ui.gd")
 const BattleSystemScene := preload("res://scripts/battle/battle_system.gd")
 const WinterMapScene := preload("res://scripts/winter_map.gd")
+const TravelTransitionScene := preload("res://scripts/transitions/travel_transition.gd")
 const CHAPEL_TEXTURE := preload("res://assets/props/chapel.png")
 const WINTER_THEME := preload("res://assets/music/snowbound_crossroads.ogg")
 
+var current_location := &"crossroads"
 var winter_map: SoulcycleWinterMap
 var player: SoulcyclePlayer
 var dialogue: SoulcycleDialogue
 var battle: SoulcycleBattleSystem
 var npc: SoulcycleNpc
+var chapel: StaticBody2D
+var travel_transition: SoulcycleTravelTransition
 var music: AudioStreamPlayer
+var is_traveling := false
 
 
 func _ready() -> void:
@@ -22,18 +27,22 @@ func _ready() -> void:
 	_build_music()
 	_build_map()
 	_spawn_player()
+	_build_dialogue_system()
 	_spawn_npc()
 	_build_battle_system()
 	_build_landmarks()
 	_build_hud()
+	_build_travel_transition()
 	if "--dialogue-preview" in OS.get_cmdline_user_args():
 		call_deferred("_open_dialogue_preview")
 	elif "--battle-preview" in OS.get_cmdline_user_args():
 		call_deferred("_open_battle_preview")
+	elif "--travel-preview" in OS.get_cmdline_user_args():
+		call_deferred("_open_travel_preview")
 
 
 func _process(_delta: float) -> void:
-	if player == null or npc == null or dialogue == null or battle == null:
+	if player == null or dialogue == null or battle == null or is_traveling:
 		return
 
 	if Input.is_action_just_pressed("battle_preview") and not dialogue.is_open():
@@ -44,21 +53,29 @@ func _process(_delta: float) -> void:
 	if battle.is_active():
 		return
 
-	var close_enough := player.global_position.distance_to(npc.global_position) <= 120.0
-	npc.set_player_near(close_enough and not dialogue.is_open())
-
-	if not Input.is_action_just_pressed("interact"):
+	if dialogue.is_open():
+		if Input.is_action_just_pressed("interact"):
+			dialogue.advance()
 		return
 
-	if dialogue.is_open():
-		dialogue.advance()
-	elif close_enough:
+	var exit_id := winter_map.get_travel_exit(player.global_position)
+	if exit_id != &"":
+		_begin_travel(exit_id)
+		return
+
+	if npc == null:
+		return
+
+	var close_enough := player.global_position.distance_to(npc.global_position) <= 120.0
+	npc.set_player_near(close_enough)
+	if Input.is_action_just_pressed("interact") and close_enough:
 		npc.request_dialogue()
 
 
 func _build_map() -> void:
 	winter_map = WinterMapScene.new()
-	winter_map.name = "WinterMap"
+	winter_map.name = "WinterMap_%s" % current_location
+	winter_map.location_id = current_location
 	add_child(winter_map)
 
 
@@ -81,12 +98,18 @@ func _spawn_player() -> void:
 
 
 func _spawn_npc() -> void:
+	if current_location != &"crossroads":
+		npc = null
+		return
+
 	npc = NpcScene.new()
 	npc.name = "Keeper"
 	npc.position = winter_map.get_npc_position()
 	npc.dialogue_requested.connect(_on_dialogue_requested)
 	add_child(npc)
 
+
+func _build_dialogue_system() -> void:
 	dialogue = DialogueScene.new()
 	dialogue.name = "DialogueUI"
 	dialogue.dialogue_opened.connect(func() -> void: player.can_move = false)
@@ -104,10 +127,13 @@ func _build_battle_system() -> void:
 
 
 func _build_landmarks() -> void:
-	_add_chapel(winter_map.get_chapel_position())
+	if current_location == &"crossroads":
+		chapel = _add_chapel(winter_map.get_chapel_position())
+	else:
+		chapel = null
 
 
-func _add_chapel(position: Vector2) -> void:
+func _add_chapel(position: Vector2) -> StaticBody2D:
 	var body := StaticBody2D.new()
 	body.position = position + Vector2(0, 24)
 	body.collision_layer = 2
@@ -127,6 +153,56 @@ func _add_chapel(position: Vector2) -> void:
 	body.add_child(building)
 	body.add_child(_create_warm_light(Vector2(0, -78), 0.95, 1.65))
 	add_child(body)
+	return body
+
+
+func _build_travel_transition() -> void:
+	travel_transition = TravelTransitionScene.new()
+	travel_transition.name = "TravelTransition"
+	add_child(travel_transition)
+
+
+func _begin_travel(exit_id: StringName) -> void:
+	var destination := &""
+	var arrival_edge := &""
+	var direction := 1
+	if current_location == &"crossroads" and exit_id == &"north":
+		destination = &"northern_grove"
+		arrival_edge = &"south"
+		direction = 1
+	elif current_location == &"northern_grove" and exit_id == &"south":
+		destination = &"crossroads"
+		arrival_edge = &"north"
+		direction = -1
+
+	if destination == &"":
+		return
+
+	is_traveling = true
+	player.can_move = false
+	await travel_transition.play(direction)
+	_replace_location(destination, arrival_edge)
+	await travel_transition.reveal_world()
+	player.can_move = true
+	is_traveling = false
+
+
+func _replace_location(destination: StringName, arrival_edge: StringName) -> void:
+	if npc != null:
+		npc.queue_free()
+		npc = null
+	if chapel != null:
+		chapel.queue_free()
+		chapel = null
+	if winter_map != null:
+		winter_map.queue_free()
+
+	current_location = destination
+	_build_map()
+	player.set_footstep_surface_resolver(winter_map.get_footstep_surface)
+	player.global_position = winter_map.get_arrival_position(arrival_edge)
+	_spawn_npc()
+	_build_landmarks()
 
 
 func _build_hud() -> void:
@@ -224,6 +300,10 @@ func _open_dialogue_preview() -> void:
 
 func _open_battle_preview() -> void:
 	battle.start_battle(&"first_wraith")
+
+
+func _open_travel_preview() -> void:
+	_begin_travel(&"north")
 
 
 func _install_battle_input() -> void:
