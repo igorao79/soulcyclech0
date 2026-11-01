@@ -2,33 +2,44 @@ class_name SoulcycleTravelTransition
 extends CanvasLayer
 
 const TRAVEL_BACKGROUND := preload("res://assets/transitions/winter_forest_travel.png")
-const ILLUSTRATED_WALK_FRAMES := [
-	preload("res://assets/transitions/nameless_walk/frame_01.png"),
-	preload("res://assets/transitions/nameless_walk/frame_02.png"),
-	preload("res://assets/transitions/nameless_walk/frame_03.png"),
-	preload("res://assets/transitions/nameless_walk/frame_04.png"),
-	preload("res://assets/transitions/nameless_walk/frame_05.png"),
-	preload("res://assets/transitions/nameless_walk/frame_06.png"),
-	preload("res://assets/transitions/nameless_walk/frame_07.png"),
-	preload("res://assets/transitions/nameless_walk/frame_08.png"),
-]
+const WALK_FRAMES_PATH := "res://assets/transitions/nameless_walk_v3/frame_%02d.png"
 const FOOTSTEP_SNOW := [
 	preload("res://assets/audio/footsteps/snow_01.wav"),
 	preload("res://assets/audio/footsteps/snow_02.wav"),
 	preload("res://assets/audio/footsteps/snow_03.wav"),
 ]
 const VIEWPORT_SIZE := Vector2(960, 540)
-const TRAVEL_DURATION := 12.5
-const STEP_INTERVAL := 0.73
 const WALKER_START_X := -100.0
 const WALKER_END_X := 1060.0
-const WALKER_BASELINE_Y := 448.0
+const WALKER_BASELINE_Y := 462.0
 const WALKER_SCALE := 0.5
+const MOONLIGHT_TINT := Color(0.76, 0.81, 0.98)
+
+# Цикл ходьбы nameless_walk_v3 вырезан из сгенерированного видео: камера
+# следовала за персонажем, поэтому кадры идут «на месте» (400×570, подошва
+# на y=548). 26 кадров видео дополнены промежуточными по оптическому потоку
+# до 52, чтобы при спокойном темпе анимация шла с частотой 30 кадров в секунду.
+# Опорная стопа уходит назад с постоянной скоростью — WALK_ADVANCE пикселей
+# кадра за кадр. Тело сдвигается ровно на столько же
+# при каждой смене кадра, так что стопа стоит на снегу неподвижно.
+# HEEL_STRIKES — кадры касания пятки и центр передней подошвы (след, звук).
+const FRAME_SIZE := Vector2(400, 570)
+const FRAME_SOLE_Y := 548.0
+const WALK_FRAME_COUNT := 52
+const WALK_FPS := 30.0
+const WALK_ADVANCE := 9.275
+const HEEL_STRIKES := {
+	0: 318.0,
+	26: 326.0,
+}
+
+signal walk_finished
 
 var root: Control
 var background: TextureRect
 var cold_veil: ColorRect
 var black_cover: ColorRect
+var footprints: Node2D
 var walker: Node2D
 var character_sprite: AnimatedSprite2D
 var walker_shadow: Polygon2D
@@ -36,8 +47,12 @@ var snow: GPUParticles2D
 var footstep_players: Array[AudioStreamPlayer] = []
 var footstep_random := RandomNumberGenerator.new()
 var footstep_voice := 0
-var step_clock := 0.0
 var walking := false
+var walk_direction := 1
+var walk_start_x := 0.0
+var walk_end_x := 0.0
+var frame_index := 0
+var frame_time_left := 0.0
 
 
 func _ready() -> void:
@@ -53,16 +68,19 @@ func _process(delta: float) -> void:
 	if not walking:
 		return
 
-	step_clock += delta
-	var frame_phase: float = float(character_sprite.frame) / float(
-		maxi(character_sprite.sprite_frames.get_frame_count(&"walk") - 1, 1)
-	)
-	var shadow_pulse: float = 0.94 + sin(frame_phase * TAU * 2.0) * 0.06
-	walker_shadow.scale = Vector2(1.0 / shadow_pulse, shadow_pulse)
+	frame_time_left -= delta
+	while frame_time_left <= 0.0 and walking:
+		# Тело проходит ровно тот путь, который опорная стопа прошла назад
+		# за кадр, поэтому стопа остаётся на том же месте снега.
+		walker.position.x += walk_direction * WALK_ADVANCE * WALKER_SCALE
+		frame_index = (frame_index + 1) % WALK_FRAME_COUNT
+		_show_frame(frame_index)
+		frame_time_left += 1.0 / WALK_FPS
 
-	if step_clock >= STEP_INTERVAL:
-		step_clock = fmod(step_clock, STEP_INTERVAL)
-		_play_footstep()
+		var reached_end := walker.position.x >= walk_end_x if walk_direction > 0 else walker.position.x <= walk_end_x
+		if reached_end:
+			walking = false
+			walk_finished.emit()
 
 
 func play(direction: int = 1) -> void:
@@ -74,40 +92,65 @@ func play(direction: int = 1) -> void:
 	snow.emitting = true
 	root.modulate = Color(1, 1, 1, 0)
 	black_cover.color = Color(0.015, 0.02, 0.04, 0)
-	background.scale = Vector2(1.055, 1.055)
+	background.scale = Vector2(1.04, 1.04)
+	for print_node in footprints.get_children():
+		print_node.queue_free()
 
-	character_sprite.sprite_frames = _create_walk_frames()
-	character_sprite.flip_h = direction < 0
-	character_sprite.play(&"walk")
-	walker.position = Vector2(
-		WALKER_START_X if direction > 0 else WALKER_END_X,
-		WALKER_BASELINE_Y
-	)
-	walker.scale = Vector2.ONE
-	step_clock = 0.12
+	walk_direction = 1 if direction >= 0 else -1
+	if character_sprite.sprite_frames == null:
+		character_sprite.sprite_frames = _create_walk_frames()
+	character_sprite.animation = &"walk"
+	character_sprite.flip_h = walk_direction < 0
+	walk_start_x = WALKER_START_X if walk_direction > 0 else WALKER_END_X
+	walk_end_x = WALKER_END_X if walk_direction > 0 else WALKER_START_X
+	walker.position = Vector2(walk_start_x, WALKER_BASELINE_Y)
+	frame_index = 0
+	_show_frame(frame_index)
+	frame_time_left = 1.0 / WALK_FPS
 	walking = true
 
-	var travel := create_tween().set_parallel(true)
-	travel.tween_property(root, "modulate:a", 1.0, 0.35)
-	travel.tween_property(
-		walker,
-		"position:x",
-		WALKER_END_X if direction > 0 else WALKER_START_X,
-		TRAVEL_DURATION
-	).set_trans(Tween.TRANS_LINEAR)
-	travel.tween_property(
-		background,
-		"scale",
-		Vector2.ONE,
-		TRAVEL_DURATION
-	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	await travel.finished
+	var speed := WALK_ADVANCE * WALKER_SCALE * WALK_FPS
+	var travel_duration := absf(walk_end_x - walk_start_x) / speed
 
-	walking = false
-	character_sprite.pause()
+	var intro := create_tween().set_parallel(true)
+	intro.tween_property(root, "modulate:a", 1.0, 0.35)
+	# Лёгкий наезд камеры с центром на линии земли, чтобы снег под ногами
+	# не уплывал по вертикали.
+	intro.tween_property(background, "scale", Vector2.ONE, travel_duration) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await walk_finished
+
 	var cover := create_tween()
 	cover.tween_property(black_cover, "color:a", 1.0, 0.42)
 	await cover.finished
+
+
+func _show_frame(index: int) -> void:
+	character_sprite.frame = index
+	# Тень шире в момент касания, когда ноги расставлены, и уже при переносе.
+	var phase := float(index) / float(WALK_FRAME_COUNT)
+	var spread := 0.5 + 0.5 * cos(phase * TAU * 2.0)
+	walker_shadow.scale = Vector2(0.82 + spread * 0.28, 1.0)
+	if HEEL_STRIKES.has(index):
+		_on_heel_strike(float(HEEL_STRIKES[index]))
+
+
+func _on_heel_strike(frame_sole_x: float) -> void:
+	_play_footstep()
+	var print_x := walker.position.x + walk_direction * (frame_sole_x - FRAME_SIZE.x * 0.5) * WALKER_SCALE
+	var footprint := Polygon2D.new()
+	var points := PackedVector2Array()
+	for point_index in range(16):
+		var angle := TAU * float(point_index) / 16.0
+		points.append(Vector2(cos(angle) * 13.0, sin(angle) * 3.2))
+	footprint.polygon = points
+	footprint.color = Color(0.03, 0.05, 0.14, 0.38)
+	footprint.position = Vector2(print_x, WALKER_BASELINE_Y + 1.0)
+	footprints.add_child(footprint)
+	var fade := footprint.create_tween()
+	fade.tween_interval(2.2)
+	fade.tween_property(footprint, "modulate:a", 0.0, 2.5)
+	fade.tween_callback(footprint.queue_free)
 
 
 func reveal_world() -> void:
@@ -137,7 +180,7 @@ func _build_visuals() -> void:
 	background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	background.pivot_offset = VIEWPORT_SIZE * 0.5
+	background.pivot_offset = Vector2(VIEWPORT_SIZE.x * 0.5, WALKER_BASELINE_Y)
 	root.add_child(background)
 
 	cold_veil = ColorRect.new()
@@ -145,6 +188,10 @@ func _build_visuals() -> void:
 	cold_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	cold_veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(cold_veil)
+
+	footprints = Node2D.new()
+	footprints.name = "Footprints"
+	root.add_child(footprints)
 
 	_build_snow()
 	_build_walker()
@@ -173,12 +220,13 @@ func _build_walker() -> void:
 		Vector2(-30, 4),
 		Vector2(-42, 0),
 	])
-	walker_shadow.color = Color(0.015, 0.025, 0.06, 0.3)
+	walker_shadow.color = Color(0.015, 0.025, 0.07, 0.34)
 	walker.add_child(walker_shadow)
 
 	character_sprite = AnimatedSprite2D.new()
 	character_sprite.name = "AnimatedWalker"
-	character_sprite.position = Vector2(0, -117.5)
+	character_sprite.position = Vector2(0, -(FRAME_SOLE_Y - FRAME_SIZE.y * 0.5) * WALKER_SCALE)
+	character_sprite.modulate = MOONLIGHT_TINT
 	character_sprite.scale = Vector2(WALKER_SCALE, WALKER_SCALE)
 	character_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	walker.add_child(character_sprite)
@@ -231,8 +279,7 @@ func _create_walk_frames() -> SpriteFrames:
 	var frames := SpriteFrames.new()
 	frames.remove_animation(&"default")
 	frames.add_animation(&"walk")
-	frames.set_animation_speed(&"walk", 5.5)
 	frames.set_animation_loop(&"walk", true)
-	for frame_texture in ILLUSTRATED_WALK_FRAMES:
-		frames.add_frame(&"walk", frame_texture)
+	for frame_number in range(1, WALK_FRAME_COUNT + 1):
+		frames.add_frame(&"walk", load(WALK_FRAMES_PATH % frame_number) as Texture2D)
 	return frames
