@@ -51,9 +51,9 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if Input.is_action_just_pressed("switch_character_1"):
+	if can_move and Input.is_action_just_pressed("switch_character_1"):
 		switch_character(0)
-	elif Input.is_action_just_pressed("switch_character_2"):
+	elif can_move and Input.is_action_just_pressed("switch_character_2"):
 		switch_character(1)
 
 	var direction := Vector2.ZERO
