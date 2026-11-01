@@ -36,5 +36,26 @@ godot --path /path/to/soulcycle -- --dialogue-preview --portrait
 godot --path /path/to/soulcycle -- --battle-preview
 ```
 
+## ASCII-демо
+
+Отдельный кусочек игры в символьной графике: те же персонажи, но весь мир
+нарисован кодом, без спрайтов и тайлов. Основная игра его не использует.
+
+```bash
+godot --path /path/to/soulcycle res://scenes/ascii_demo.tscn
+```
+
+- `scripts/ascii/ascii_scene.gdshader` — трассировка сцены на SDF, один пиксель
+  прохода — одна ячейка сетки. Части лежат рядом в `.gdshaderinc`: `figures` —
+  персонажи, `props` — лес, камни и постройки, `ground` — земля, `water` —
+  вода с настоящим отражением, `particles` — частицы.
+- `scripts/ascii/ascii_figure_layer.gdshader` — герой отдельным слоем: всегда поверх
+  мира и не дрожит, пока мир плавно едет под ним.
+- `scripts/ascii/ascii_glyph.gdshader` — превращает ячейки в символы атласа,
+  а `ascii_grass.gdshaderinc` рисует попиксельные штрихи травы.
+- `scripts/ascii/ascii_world.gd` — карта и столкновения, общие для шейдера и логики.
+- `scripts/ascii/ascii_grass_field.gd` — физика травы: пружины, которые гнёт герой и его шаги.
+- `scripts/ascii/ascii_demo.gd` — управление, диалоги из каталога и цикл колокола.
+
 Проект использует встроенные возможности Godot и не требует сторонних
 плагинов. Шрифт Cormorant Garamond распространяется по лицензии SIL OFL.
