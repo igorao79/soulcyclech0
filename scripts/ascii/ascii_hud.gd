@@ -1,7 +1,6 @@
 class_name SoulcycleAsciiHud
 extends Control
 
-const DIALOGUE_COLUMNS := 68
 
 var font: Font
 var font_size := 14
@@ -15,11 +14,17 @@ var dialogue_text := ""
 var dialogue_visible_chars := 0
 var notice_text := ""
 var notice_alpha := 0.0
+var _serif: Font
+var _clock := 0.0
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func _process(delta: float) -> void:
+	_clock += delta
 
 
 func _draw() -> void:
@@ -35,37 +40,11 @@ func _draw() -> void:
 
 
 func _draw_dialogue() -> void:
-	var width := mini(DIALOGUE_COLUMNS, grid.x - 6)
-	var lines := _wrap(dialogue_text, width - 6)
-	var height := lines.size() + 4
-	var left := (grid.x - width) / 2
-	var top := grid.y - height - 4
-	var frame := Color(0.55, 0.60, 0.72)
-
-	draw_rect(
-		Rect2(Vector2(left * cell.x, top * cell.y), Vector2(width * cell.x, height * cell.y)),
-		Color(0.012, 0.014, 0.026, 0.96)
+	if _serif == null:
+		_serif = SoulcycleUiStyle.serif(600.0)
+	SoulcycleDialogueView.draw(
+		self, font, _serif, dialogue_speaker, Color(0.86, 0.89, 0.98), dialogue_text, dialogue_visible_chars, _clock
 	)
-	var label := "─ %s " % dialogue_speaker
-	_text(left, top, "┌", frame)
-	_text(left + 1, top, label, dialogue_color)
-	var rule_start := left + 1 + label.length()
-	_text(rule_start, top, "─".repeat(left + width - 1 - rule_start) + "┐", frame)
-
-	for row in range(1, height - 1):
-		_text(left, top + row, "│", frame)
-		_text(left + width - 1, top + row, "│", frame)
-
-	var remaining := dialogue_visible_chars
-	for index in range(lines.size()):
-		var line: String = lines[index]
-		_text(left + 3, top + 1 + index, line.substr(0, maxi(remaining, 0)), Color(0.88, 0.90, 0.95))
-		remaining -= line.length() + 1
-
-	var prompt := "[E]"
-	if remaining >= 0:
-		_text(left + width - prompt.length() - 3, top + height - 2, prompt, Color(0.94, 0.77, 0.42))
-	_text(left, top + height - 1, "└" + "─".repeat(width - 2) + "┘", frame)
 
 
 func _wrap(text: String, width: int) -> PackedStringArray:

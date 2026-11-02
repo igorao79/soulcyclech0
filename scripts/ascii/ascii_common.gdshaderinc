@@ -89,6 +89,8 @@ uniform float tolls = 0.0;
 uniform vec3 bell_pos = vec3(0.0);
 uniform float bell_swing = 0.0;
 uniform vec3 chapel_pos = vec3(0.0);
+// Руины на северном краю ложбины есть только на перекрёстке ASCII-ночи.
+uniform float ruins_on = 1.0;
 uniform vec3 flower_pos = vec3(0.0);
 uniform vec4 pier_rect = vec4(0.0);
 uniform float pier_top = 0.42;

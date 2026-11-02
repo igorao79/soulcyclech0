@@ -91,13 +91,24 @@ void shade_ground(vec3 p, vec3 rd, vec2 wc, float shadow, out vec3 col, out int 
 			float lum = dot(col, vec3(0.3, 0.55, 0.15));
 			level = int(clamp(lum * 7.0 + fine * 7.0 + cell_hash * 5.0 - 4.5, 0.0, 15.0));
 		} else {
-			level = cell_hash2 < density * 0.85 ? 2 + int(clamp(relief * 9.0 + cell_hash * 2.0 - 1.0, 0.0, 9.99)) : 0;
+			// Протоптанный снег темнее и ровнее, по нему тянется цепочка старых следов.
+			col = vec3(0.36, 0.39, 0.50) * (light * 0.8 + vec3(0.28));
+			float old_prints = value_noise(p.xz * vec2(3.4, 3.4) + vec2(7.0, 3.0));
+			level = old_prints > 0.64 && cell_hash2 > 0.35 ? 6 : (cell_hash2 < 0.5 ? 2 + int(cell_hash * 2.0) : 0);
 		}
 		return;
 	}
 
+	// Вдоль тропы снег отброшен валами: светлая плотная кромка.
+	if (!is_garden && w.g + edge > 0.36) {
+		ramp = RAMP_SNOW;
+		col = vec3(0.86, 0.92, 1.0) * (light * 0.9 + vec3(0.42));
+		level = cell_hash2 < 0.7 ? 9 + int(cell_hash * 4.0) : 6;
+		return;
+	}
+
 	ramp = RAMP_SNOW;
-	col = mix(vec3(0.30, 0.34, 0.40), vec3(0.92, 0.97, 1.0), relief) * (light * 1.0 + vec3(0.42));
+	col = mix(vec3(0.38, 0.42, 0.50), vec3(0.92, 0.97, 1.0), relief) * (light * 1.0 + vec3(0.42));
 
 	if (print_mark > 0.0) {
 		col *= mix(1.0, 0.45, print_mark);

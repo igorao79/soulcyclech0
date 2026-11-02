@@ -57,6 +57,40 @@ const RUIN_WALLS: Array[Rect2] = [
 	Rect2(53.4, 45.2, 1.6, 1.6), Rect2(61.2, 45.2, 1.6, 1.6),
 ]
 
+# Раскладка мира: перекрёсток ASCII-ночи или тропа у озера из первой главы.
+var layout := &"crossroads"
+var spawn := SPAWN
+var keeper := KEEPER
+var bell := BELL
+var chapel := CHAPEL
+var pond_center := POND_CENTER
+var pond_radii := POND_RADII
+var islet := ISLET
+var flower := FLOWER
+var pier_rect := PIER_RECT
+var routes: Array[Array] = ROUTES
+var boulders: Array[Vector3] = BOULDERS
+var ruin_walls: Array[Rect2] = RUIN_WALLS
+# Поляны без леса: x, z, радиус.
+var clearings: Array[Vector3] = [Vector3(60.0, 31.0, 5.5), Vector3(88.0, 22.0, 4.0), Vector3(38.0, 33.0, 5.0)]
+var lantern_points: Array[Vector2] = [
+	Vector2(55.5, 34.5), Vector2(66.0, 26.0), Vector2(76.0, 26.0),
+	Vector2(85.0, 24.5), Vector2(46.5, 31.5), Vector2(60.8, 44.0),
+	Vector2(55.4, 51.0), Vector2(60.8, 51.0),
+]
+var graves: Array[Vector2] = [Vector2(35.0, 30.0), Vector2(38.1, 36.3), Vector2(41.4, 30.5), Vector2(32.0, 36.0)]
+# Камни и пни: x, z, размер.
+var rocks: Array[Vector3] = [
+	Vector3(66.5, 37.0, 0.6), Vector3(79.0, 30.0, 0.2),
+	Vector3(49.5, 47.5, 0.9), Vector3(43.5, 47.5, 0.5), Vector3(73.5, 47.5, 0.8),
+]
+var stumps: Array[Vector3] = [Vector3(52.2, 36.8, 0.5)]
+var garden_on := true
+# Насколько земля поднимается от воды: у тропы к дому это заметный склон.
+var lake_rise := 0.0
+# Направление взгляда героя при появлении.
+var spawn_yaw := 0.0
+
 var texel_size: Vector2i
 var heights := PackedFloat32Array()
 var prop_grid: Vector2i
@@ -72,7 +106,10 @@ var _prop_image: Image
 var _random := RandomNumberGenerator.new()
 
 
-func _init() -> void:
+func _init(world_layout: StringName = &"crossroads") -> void:
+	layout = world_layout
+	if layout == &"lake_trail":
+		_use_lake_trail()
 	_noise.seed = 79
 	_noise.frequency = 0.06
 	_random.seed = 4117
@@ -80,6 +117,41 @@ func _init() -> void:
 	prop_grid = Vector2i(ceili(SIZE.x / PROP_CELL), ceili(SIZE.y / PROP_CELL))
 	_build_terrain()
 	_build_props()
+
+
+# Тропа у озера: большое озеро на юго-западе, снежный склон, тропа через ельник к дому.
+func _use_lake_trail() -> void:
+	var nowhere := Vector2(-1000.0, -1000.0)
+	spawn = Vector2(49.0, 45.0)
+	spawn_yaw = deg_to_rad(-140.0)
+	keeper = nowhere
+	bell = nowhere
+	flower = nowhere
+	islet = nowhere
+	pier_rect = Vector4(-10.0, -10.0, -9.0, -9.0)
+	chapel = Vector2(94.0, 15.0)
+	pond_center = Vector2(30.0, 64.0)
+	pond_radii = Vector2(27.0, 21.0)
+	routes = [[
+		Vector2(49, 45), Vector2(53, 40), Vector2(59, 37), Vector2(64, 32), Vector2(70, 29),
+		Vector2(77, 25), Vector2(84, 22), Vector2(91, 20), Vector2(94, 19.5),
+	]]
+	boulders = [Vector3(43.5, 49.5, 1.6), Vector3(55.5, 49.5, 1.4), Vector3(61.5, 43.5, 1.8)]
+	ruin_walls = []
+	clearings = [Vector3(49.0, 45.0, 3.5), Vector3(94.0, 20.0, 4.5)]
+	lantern_points = [Vector2(88.5, 21.0), Vector2(91.5, 23.0)]
+	graves = []
+	rocks = [Vector3(66.0, 35.5, 0.5), Vector3(73.0, 31.0, 0.4), Vector3(52.0, 47.0, 0.3)]
+	stumps = [Vector3(56.5, 41.5, 0.5)]
+	garden_on = false
+	lake_rise = 0.55
+
+
+## Места, с которыми можно говорить или действовать: в главе их нет.
+func interactables() -> Dictionary:
+	if layout != &"crossroads":
+		return {}
+	return {&"keeper": keeper, &"bell": bell, &"flower": flower}
 
 
 func height_at(point: Vector2) -> float:
@@ -98,10 +170,10 @@ func height_at(point: Vector2) -> float:
 
 func is_on_pier(point: Vector2) -> bool:
 	return (
-		point.x >= PIER_RECT.x
-		and point.x <= PIER_RECT.z
-		and point.y >= PIER_RECT.y
-		and point.y <= PIER_RECT.w
+		point.x >= pier_rect.x
+		and point.x <= pier_rect.z
+		and point.y >= pier_rect.y
+		and point.y <= pier_rect.w
 	)
 
 
@@ -125,7 +197,7 @@ func clearance(point: Vector2) -> float:
 	var cell := Vector2i(floori(point.x / PROP_CELL), floori(point.y / PROP_CELL))
 	for obstacle: Vector3 in _obstacle_cells.get(cell, []):
 		best = minf(best, point.distance_to(Vector2(obstacle.x, obstacle.y)) - obstacle.z)
-	best = minf(best, point.distance_to(KEEPER) - KEEPER_RADIUS)
+	best = minf(best, point.distance_to(keeper) - KEEPER_RADIUS)
 	return minf(best, _structure_distance(point))
 
 
@@ -168,14 +240,14 @@ func surface_at(point: Vector2) -> StringName:
 
 # Часовня, колокольня и стены руин — прямоугольники со знаковым расстоянием.
 func _structure_distance(point: Vector2) -> float:
-	var best := _box_distance(point - CHAPEL - Vector2(0.0, 0.2), Vector2(1.9, 2.7))
-	best = minf(best, _box_distance(point - BELL, Vector2(1.4, 0.8)))
+	var best := _box_distance(point - chapel - Vector2(0.0, 0.2), Vector2(1.9, 2.7))
+	best = minf(best, _box_distance(point - bell, Vector2(1.4, 0.8)))
 	return minf(best, _ruin_distance(point))
 
 
 func _ruin_distance(point: Vector2) -> float:
 	var best := 1000.0
-	for wall in RUIN_WALLS:
+	for wall in ruin_walls:
 		best = minf(best, _box_distance(point - wall.get_center(), wall.size * 0.5))
 	return best
 
@@ -186,20 +258,22 @@ func _box_distance(offset: Vector2, half: Vector2) -> float:
 
 
 func _pond_field(point: Vector2) -> float:
-	var offset := (point - POND_CENTER) / POND_RADII
+	var offset := (point - pond_center) / pond_radii
 	var wobble := _noise.get_noise_2dv(point * 1.4) * 0.22 + _noise.get_noise_2dv(point * 4.5) * 0.09
 	return 1.0 - offset.length() + wobble
 
 
 func _garden(point: Vector2) -> float:
-	var distance := point.distance_to(POND_CENTER + Vector2(0.0, -1.0))
+	if not garden_on:
+		return 0.0
+	var distance := point.distance_to(pond_center + Vector2(0.0, -1.0))
 	var wobble := _noise.get_noise_2dv(point * 0.7) * 5.0
 	return 1.0 - smoothstep(19.0, 25.0, distance + wobble)
 
 
 func _route_distance(point: Vector2) -> float:
 	var best := 1000.0
-	for route in ROUTES:
+	for route in routes:
 		for index in range(route.size() - 1):
 			var nearest := Geometry2D.get_closest_point_to_segment(point, route[index], route[index + 1])
 			best = minf(best, point.distance_to(nearest))
@@ -207,10 +281,10 @@ func _route_distance(point: Vector2) -> float:
 
 
 func _clearing_distance(point: Vector2) -> float:
-	return minf(
-		point.distance_to(Vector2(60.0, 31.0)) - 5.5,
-		minf(point.distance_to(Vector2(88.0, 22.0)) - 4.0, point.distance_to(Vector2(38.0, 33.0)) - 5.0)
-	)
+	var best := 1000.0
+	for clearing in clearings:
+		best = minf(best, point.distance_to(Vector2(clearing.x, clearing.y)) - clearing.z)
+	return best
 
 
 func _build_terrain() -> void:
@@ -220,11 +294,11 @@ func _build_terrain() -> void:
 		for x in range(texel_size.x):
 			var point := (Vector2(x, y) + Vector2(0.5, 0.5)) / TEXELS_PER_METER
 			var field := _pond_field(point)
-			var land := 0.30 + _noise.get_noise_2dv(point) * 0.32
+			var land := 0.30 + _noise.get_noise_2dv(point) * 0.32 + clampf(-field, 0.0, 2.5) * lake_rise
 			var height := lerpf(land, -0.72, smoothstep(-0.12, 0.42, field))
-			var islet := 1.0 - point.distance_to(ISLET) / 2.7
-			if islet > 0.0:
-				height = maxf(height, -0.3 + smoothstep(0.0, 0.8, islet) * 0.72)
+			var islet_rise := 1.0 - point.distance_to(islet) / 2.7
+			if islet_rise > 0.0:
+				height = maxf(height, -0.3 + smoothstep(0.0, 0.8, islet_rise) * 0.72)
 			var route := _route_distance(point)
 			var path_edge := 1.7 + _noise.get_noise_2dv(point * 2.3) * 0.5
 			var path := 1.0 - smoothstep(path_edge - 0.3, path_edge + 0.3, route)
@@ -239,32 +313,23 @@ func _build_props() -> void:
 	_prop_image.fill(Color(0, 0, 0, 0.5))
 
 	# Сначала фиксированные ориентиры, затем лес заполняет оставшиеся клетки.
-	for lantern_point: Vector2 in [
-		Vector2(55.5, 34.5), Vector2(66.0, 26.0), Vector2(76.0, 26.0),
-		Vector2(85.0, 24.5), Vector2(46.5, 31.5), Vector2(60.8, 44.0),
-		Vector2(55.4, 51.0), Vector2(60.8, 51.0),
-	]:
+	for lantern_point in lantern_points:
 		var placed := _place(PROP_LANTERN, lantern_point, 0.5)
 		# Источник поднят над головой фонаря: пятно света слабее и не выжигает снег.
 		lanterns.append(Vector3(placed.x, 2.7, placed.y))
 
 	# Свет из окон и двери часовни ложится на снег перед ней.
 	# Источник вынесен вперёд, иначе камень фасада заливает оранжевым.
-	lanterns.append(Vector3(CHAPEL.x, 1.6, CHAPEL.y + 7.5))
+	lanterns.append(Vector3(chapel.x, 1.6, chapel.y + 7.5))
 
-	for grave_point: Vector2 in [
-		Vector2(35.0, 30.0), Vector2(38.1, 36.3), Vector2(41.4, 30.5), Vector2(32.0, 36.0),
-	]:
+	for grave_point in graves:
 		_place(PROP_GRAVE, grave_point, 0.5)
-	_place(PROP_ROCK, Vector2(66.5, 37.0), 0.6)
-	_place(PROP_STUMP, Vector2(52.2, 36.8), 0.5)
-	_place(PROP_ROCK, Vector2(79.0, 30.0), 0.2)
-	# Обломки у подножия руин.
-	_place(PROP_ROCK, Vector2(49.5, 47.5), 0.9)
-	_place(PROP_ROCK, Vector2(43.5, 47.5), 0.5)
-	_place(PROP_ROCK, Vector2(73.5, 47.5), 0.8)
+	for rock in rocks:
+		_place(PROP_ROCK, Vector2(rock.x, rock.y), rock.z)
+	for stump in stumps:
+		_place(PROP_STUMP, Vector2(stump.x, stump.y), stump.z)
 
-	for boulder in BOULDERS:
+	for boulder in boulders:
 		var scale := clampf((boulder.z - 1.1) / 1.7, 0.0, 1.0)
 		_place(PROP_BOULDER, Vector2(boulder.x, boulder.y), scale)
 
@@ -284,11 +349,11 @@ func _try_forest(cell: Vector2i) -> void:
 	var keep_out := minf(_route_distance(point) - 2.5, _clearing_distance(point) - 1.2)
 	if keep_out < 0.0 or _pond_field(point) > -0.22:
 		return
-	if point.distance_to(CHAPEL) < 6.5 or point.distance_to(BELL) < 3.5:
+	if point.distance_to(chapel) < 6.5 or point.distance_to(bell) < 3.5:
 		return
 	if _ruin_distance(point) < 2.2:
 		return
-	for boulder in BOULDERS:
+	for boulder in boulders:
 		if point.distance_to(Vector2(boulder.x, boulder.y)) < boulder.z + 1.0:
 			return
 

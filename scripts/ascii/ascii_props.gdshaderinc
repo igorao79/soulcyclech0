@@ -175,7 +175,9 @@ float sd_props(vec3 p, inout int m) {
 			take(d, m, nd, nm);
 		}
 	}
-	sd_ruin(p, d, m);
+	if (ruins_on > 0.5) {
+		sd_ruin(p, d, m);
+	}
 	return d;
 }
 

@@ -63,6 +63,13 @@ const FLOWER_SEQUENCE: Array[Dictionary] = [
 	{"speaker": &"wraith", "text": "Посмотри вниз. Ты ведь уже стоял здесь. Вас там двое."},
 ]
 
+signal dialogue_finished
+
+## Раскладка мира и режим главы задаются до добавления в дерево.
+var world_layout := &"crossroads"
+## В главе герой один (Безымянный), музыку ведёт сама глава, событий перекрёстка нет.
+var chapter_mode := false
+
 var world: SoulcycleAsciiWorld
 var grass_field := SoulcycleAsciiGrassField.new()
 var hud: SoulcycleAsciiHud
@@ -124,7 +131,12 @@ func _ready() -> void:
 	_install_input_actions()
 	_configure_window()
 	font = FontAtlas.create_font()
-	world = SoulcycleAsciiWorld.new()
+	world = SoulcycleAsciiWorld.new(world_layout)
+	player_position = world.spawn
+	camera_position = world.spawn
+	player_height = world.stand_height(world.spawn)
+	player_yaw = world.spawn_yaw
+	target_yaw = world.spawn_yaw
 	_build_audio()
 	await _build_screen()
 	get_window().size_changed.connect(_fit_grid)
@@ -248,15 +260,16 @@ func _push_static_uniforms() -> void:
 	_set_scene_parameter("world_map", world.map_texture)
 	_set_scene_parameter("prop_map", world.prop_texture)
 	_set_scene_parameter("world_size", SoulcycleAsciiWorld.SIZE)
+	_set_scene_parameter("ruins_on", 1.0 if world.layout == &"crossroads" else 0.0)
 	_set_scene_parameter("cam_sin", sin(CAMERA_TILT))
 	_set_scene_parameter("cam_cos", cos(CAMERA_TILT))
-	_set_scene_parameter("keeper_pos", _ground_point(SoulcycleAsciiWorld.KEEPER))
+	_set_scene_parameter("keeper_pos", _far_or_ground(world.keeper))
 	_set_scene_parameter("keeper_yaw", 0.0)
-	_set_scene_parameter("bell_pos", _ground_point(SoulcycleAsciiWorld.BELL))
-	var chapel := SoulcycleAsciiWorld.CHAPEL
+	_set_scene_parameter("bell_pos", _far_or_ground(world.bell))
+	var chapel := world.chapel
 	_set_scene_parameter("chapel_pos", Vector3(chapel.x, 0.1, chapel.y))
-	_set_scene_parameter("flower_pos", _ground_point(SoulcycleAsciiWorld.FLOWER))
-	_set_scene_parameter("pier_rect", SoulcycleAsciiWorld.PIER_RECT)
+	_set_scene_parameter("flower_pos", _far_or_ground(world.flower))
+	_set_scene_parameter("pier_rect", world.pier_rect)
 	_set_scene_parameter("pier_top", SoulcycleAsciiWorld.PIER_TOP)
 
 	var lantern_data := PackedVector3Array(world.lanterns)
@@ -319,6 +332,8 @@ func _push_uniforms() -> void:
 
 
 func _handle_character_switch() -> void:
+	if chapter_mode:
+		return
 	var previous := character_index
 	if Input.is_action_just_pressed("switch_character_1"):
 		character_index = 0
@@ -480,15 +495,11 @@ func _handle_interaction() -> void:
 		&"flower":
 			_open_lines(FLOWER_SEQUENCE)
 			seen_flower = true
-			_add_ripple(SoulcycleAsciiWorld.FLOWER + Vector2(0.0, 2.5))
+			_add_ripple(world.flower + Vector2(0.0, 2.5))
 
 
 func _nearest_interactable() -> StringName:
-	var candidates := {
-		&"keeper": SoulcycleAsciiWorld.KEEPER,
-		&"bell": SoulcycleAsciiWorld.BELL,
-		&"flower": SoulcycleAsciiWorld.FLOWER,
-	}
+	var candidates := world.interactables()
 	var best := &""
 	var best_distance := INTERACT_RADIUS
 	for id: StringName in candidates:
@@ -527,14 +538,15 @@ func _handle_dialogue(delta: float) -> void:
 	dialogue_progress = 0.0
 	if dialogue_index >= dialogue_lines.size():
 		dialogue_lines = []
+		dialogue_finished.emit()
 
 
 func _toll_bell() -> void:
 	bell_velocity += 1.4 if bell_angle <= 0.0 else -1.4
 	bell_player.play()
 	toll_count += 1
-	_add_ripple(SoulcycleAsciiWorld.POND_CENTER + Vector2(-5.0, -3.0))
-	_add_ripple(SoulcycleAsciiWorld.POND_CENTER + Vector2(6.0, 2.0))
+	_add_ripple(world.pond_center + Vector2(-5.0, -3.0))
+	_add_ripple(world.pond_center + Vector2(6.0, 2.0))
 	if toll_count >= 3:
 		_restart_night()
 	else:
@@ -548,7 +560,7 @@ func _restart_night() -> void:
 	tween.tween_interval(1.6)
 	tween.tween_property(self, "scramble", 1.0, 1.2)
 	tween.tween_callback(func() -> void:
-		player_position = SoulcycleAsciiWorld.SPAWN
+		player_position = world.spawn
 		camera_position = player_position
 		player_height = world.stand_height(player_position)
 		footprints.clear()
@@ -590,15 +602,15 @@ func _update_hud() -> void:
 	match target:
 		&"keeper":
 			hud.tags.append(_make_tag(
-				SoulcycleAsciiWorld.KEEPER, 1.75, "[E] Смотритель", Color(0.94, 0.77, 0.42)
+				world.keeper, 1.75, "[E] Смотритель", Color(0.94, 0.77, 0.42)
 			))
 		&"bell":
 			hud.tags.append(_make_tag(
-				SoulcycleAsciiWorld.BELL, 3.0, "[E] ударить в колокол", Color(0.94, 0.77, 0.42)
+				world.bell, 3.0, "[E] ударить в колокол", Color(0.94, 0.77, 0.42)
 			))
 		&"flower":
 			hud.tags.append(_make_tag(
-				SoulcycleAsciiWorld.FLOWER, 1.75, "[E] чёрный цветок", Color(0.94, 0.77, 0.42)
+				world.flower, 1.75, "[E] чёрный цветок", Color(0.94, 0.77, 0.42)
 			))
 
 	if dialogue_lines.is_empty():
@@ -645,6 +657,18 @@ func _world_to_screen(point: Vector3) -> Vector2:
 	return Vector2(get_window().size) * 0.5 + Vector2(point.x - camera_position.x, -rise) / world_per_px
 
 
+# Чего нет в этой раскладке, уносится далеко за край мира, а не ставится на землю.
+func _far_or_ground(point: Vector2) -> Vector3:
+	if point.x < -100.0:
+		return Vector3(-1000.0, 0.0, -1000.0)
+	return _ground_point(point)
+
+
+## Реплики, запущенные снаружи (например, главой): как обычный диалог.
+func say(lines: Array[Dictionary]) -> void:
+	_open_lines(lines)
+
+
 func _ground_point(point: Vector2) -> Vector3:
 	return Vector3(point.x, world.stand_height(point), point.y)
 
@@ -657,7 +681,8 @@ func _build_audio() -> void:
 	music.volume_db = -20.0
 	music.bus = &"Music"
 	add_child(music)
-	music.play()
+	if not chapter_mode:
+		music.play()
 
 	bell_player = AudioStreamPlayer.new()
 	bell_player.stream = BellSynth.create()

@@ -12,7 +12,7 @@ const int RAMP_EDGE = 9;
 const int RAMP_DENSE = 5;
 const int RAMP_RIPPLE = 13;
 const vec3 LUMA = vec3(0.3, 0.55, 0.15);
-const int METEORS = 7;
+const int METEORS = 16;
 
 uniform sampler2D atlas_tex : filter_nearest, repeat_disable;
 uniform vec2 cell_px = vec2(5.0, 8.0);
@@ -58,67 +58,119 @@ int edge_level(vec2 normal) {
 }
 
 
-// Падающие звёзды в экранных долях (y вниз): каждая в своём ритме, с хвостом знаков.
-bool meteor_at(vec2 sp, float cell_h, out vec3 col, out int ramp, out int level) {
+// Один метеор: голова, светящийся ореол и тлеющий след, который гаснет с хвоста.
+// start, dir — экранные доли (y вниз), age — секунды с появления, speed — долей экрана в секунду.
+void meteor_trace(vec2 sp, float cell_h, vec2 start, vec2 dir, float age, float speed, float reach,
+		float bright, vec3 tint, float seed, inout vec3 col, inout int ramp, inout int level, inout float best, inout vec3 halo) {
+	float travelled = min(age * speed, reach);
+	vec2 head = start + dir * travelled;
+	vec2 to_p = sp - head;
+	float along = -dot(to_p, dir);
+	vec2 normal = vec2(-dir.y, dir.x);
+	float across = abs(dot(to_p, normal));
+	float burnt_out = max(age - reach / speed, 0.0);
+	float head_alive = 1.0 - smoothstep(0.0, 0.25, burnt_out);
+
+	// Ореол у головы подсвечивает соседние ячейки, не меняя знака.
+	float r = length(to_p * vec2(1.0, 1.3)) / cell_h;
+	halo += tint * bright * head_alive * exp(-r * r * 0.35) * 0.35;
+
+	if (across > cell_h * 0.6 || along < -cell_h * 0.7 || along > travelled + cell_h) {
+		return;
+	}
+	// Возраст этой точки следа: сколько прошло с тех пор, как через неё прошла голова.
+	float passed = max(along, 0.0) / speed;
+	float train = 1.0 - smoothstep(0.0, 0.85, passed - 0.05 + burnt_out * 0.6);
+	if (train <= 0.0) {
+		return;
+	}
+	float heat = exp(-passed * 5.0);
+	vec3 c = mix(tint * 0.55, vec3(1.0, 0.96, 0.88), heat) * bright * train * 1.5;
+	float lum = dot(c, LUMA);
+	if (lum <= best) {
+		return;
+	}
+	int new_ramp = RAMP_EDGE;
+	int new_level = edge_level(normal);
+	if (along < cell_h * 0.7 && head_alive > 0.3) {
+		new_ramp = RAMP_FLAKE;
+		new_level = 6;
+	} else if (passed >= 0.12) {
+		// Старый след рассыпается на мерцающие искры.
+		float spark = hash21(floor(sp / cell_h) + seed + floor(time * 12.0));
+		if (spark < 0.45) {
+			return;
+		}
+		new_ramp = RAMP_FLAKE;
+		new_level = spark > 0.85 ? 5 : 0;
+	}
+	best = lum;
+	col = c;
+	ramp = new_ramp;
+	level = new_level;
+}
+
+
+// Звездопад — поток из одного радианта справа вверху: все звёзды разлетаются из этой точки.
+// Тусклые искры, обычные звёзды, яркие с ореолом; болид в конце раскалывается на осколки.
+bool meteor_at(vec2 sp, float cell_h, out vec3 col, out int ramp, out int level, out vec3 halo) {
 	col = vec3(0.0);
 	ramp = RAMP_FLAKE;
 	level = 0;
-	bool hit = false;
-	for (int i = 0; i < METEORS + 1; i++) {
-		vec2 start;
-		vec2 dir;
-		float age;
-		float len;
-		float bright;
-		if (i == METEORS) {
-			if (big_meteor.x < 0.0 || big_meteor.x > 2.2) {
-				continue;
-			}
-			age = big_meteor.x;
-			start = big_meteor.yz;
-			dir = vec2(cos(big_meteor.w), sin(big_meteor.w));
-			len = 0.42;
-			bright = 1.6;
-		} else {
+	halo = vec3(0.0);
+	float best = 0.0;
+	float aspect = screen_px.x / screen_px.y;
+	vec2 radiant = vec2(aspect * 0.92, -0.18);
+	if (meteor_rate > 0.0) {
+		for (int i = 0; i < METEORS; i++) {
 			float fi = float(i);
-			float period = 2.6 + hash21(vec2(fi, 1.0)) * 4.5;
+			float period = 2.2 + hash21(vec2(fi, 1.0)) * 5.0;
 			float clock = time * meteor_rate + hash21(vec2(fi, 2.0)) * period;
 			float cycle = floor(clock / period);
-			age = mod(clock, period);
-			if (age > 0.9 || meteor_rate <= 0.0) {
+			float age = mod(clock, period);
+			float kind = hash21(vec2(fi, cycle + 3.0));
+			float life = kind > 0.8 ? 1.6 : 1.1;
+			if (age > life) {
 				continue;
 			}
-			float aspect = screen_px.x / screen_px.y;
-			start = vec2(hash21(vec2(fi, cycle)) * (aspect + 0.5) - 0.1, 0.03 + hash21(vec2(cycle, fi)) * 0.3);
-			float angle = mix(2.35, 2.75, hash21(vec2(fi + cycle, 5.0)));
-			dir = vec2(cos(angle), sin(angle));
-			len = 0.12 + hash21(vec2(fi, cycle + 7.0)) * 0.12;
-			bright = 0.8 + hash21(vec2(cycle, fi + 3.0)) * 0.5;
+			vec2 start = vec2(hash21(vec2(fi, cycle)) * (aspect + 0.3) - 0.3, 0.02 + hash21(vec2(cycle, fi)) * 0.32);
+			vec2 dir = normalize(start - radiant + vec2(0.0, 0.25));
+			float bright = kind > 0.8 ? 1.25 : (kind > 0.35 ? 0.75 : 0.4);
+			float reach = kind > 0.8 ? 0.42 : (kind > 0.35 ? 0.26 : 0.14);
+			float hue = hash21(vec2(cycle, fi + 9.0));
+			vec3 tint = hue > 0.85 ? vec3(0.55, 1.0, 0.75) : (hue > 0.6 ? vec3(1.0, 0.78, 0.45) : vec3(0.60, 0.70, 1.0));
+			meteor_trace(sp, cell_h, start, dir, age, 0.65 + kind * 0.4, reach, bright, tint, fi, col, ramp, level, best, halo);
 		}
-		vec2 head = start + dir * age * 0.75;
-		vec2 to_p = sp - head;
-		float along = -dot(to_p, dir);
-		vec2 normal = vec2(-dir.y, dir.x);
-		float across = abs(dot(to_p, normal));
-		if (along < -cell_h * 0.6 || along > len || across > cell_h * 0.55) {
-			continue;
-		}
-		float fade_out = 1.0 - smoothstep(0.55, 0.9, age / (i == METEORS ? 2.4 : 1.0));
-		float tail = 1.0 - clamp(along / len, 0.0, 1.0);
-		vec3 c = mix(vec3(0.55, 0.65, 1.0), vec3(1.0, 0.95, 0.82), tail * tail) * (0.35 + tail) * bright * 1.4 * fade_out;
-		if (dot(c, LUMA) > dot(col, LUMA)) {
-			col = c;
-			hit = true;
-			if (along < cell_h * 0.6) {
-				ramp = RAMP_FLAKE;
-				level = 6;
-			} else {
-				ramp = RAMP_EDGE;
-				level = edge_level(vec2(normal.x, normal.y));
+	}
+	if (big_meteor.x >= 0.0 && big_meteor.x < 3.2) {
+		float age = big_meteor.x;
+		vec2 start = big_meteor.yz;
+		vec2 dir = vec2(cos(big_meteor.w), sin(big_meteor.w));
+		meteor_trace(sp, cell_h, start, dir, age, 0.55, 0.75, 2.2, vec3(1.0, 0.82, 0.55), 40.0, col, ramp, level, best, halo);
+		// В конце пути болид раскалывается: осколки расходятся веером и гаснут.
+		float split = age - 0.75 / 0.55;
+		if (split > 0.0) {
+			vec2 burst = start + dir * 0.75;
+			for (int k = 0; k < 5; k++) {
+				float fk = float(k);
+				float angle = atan(dir.y, dir.x) + (fk - 2.0) * 0.16;
+				vec2 shard_dir = vec2(cos(angle), sin(angle));
+				meteor_trace(sp, cell_h, burst, shard_dir, split, 0.35, 0.10 + hash21(vec2(fk, 5.0)) * 0.08,
+					1.0, vec3(1.0, 0.62, 0.40), 50.0 + fk, col, ramp, level, best, halo);
 			}
 		}
 	}
-	return hit;
+	return best > 0.02;
+}
+
+
+// Вспышка болида на мгновение высветляет всё небо.
+float sky_flash() {
+	if (big_meteor.x < 0.0) {
+		return 0.0;
+	}
+	float burst = big_meteor.x - 0.75 / 0.55;
+	return exp(-burst * burst * 18.0) * 0.55;
 }
 
 
@@ -158,7 +210,12 @@ void background(vec2 sp, vec2 wp, vec2 star_cell, float cell_h, out vec3 col, ou
 	vec3 m_col;
 	int m_ramp;
 	int m_level;
-	if (meteor_at(sp, cell_h, m_col, m_ramp, m_level)) {
+	vec3 halo;
+	bool streak = meteor_at(sp, cell_h, m_col, m_ramp, m_level, halo);
+	float flash = sky_flash();
+	sky += halo + vec3(0.30, 0.26, 0.40) * flash * up;
+	col += halo + vec3(0.30, 0.26, 0.40) * flash * up;
+	if (streak) {
 		col = m_col;
 		ramp = m_ramp;
 		level = m_level;
@@ -179,6 +236,26 @@ void background(vec2 sp, vec2 wp, vec2 star_cell, float cell_h, out vec3 col, ou
 			col = vec3(0.70, 0.74, 0.96);
 		}
 	}
+	// Ельник на дальнем берегу: зубчатая тёмная кромка у самой воды.
+	// Каждая ель своей высоты, местами просветы — опушка, а не пила.
+	float tx = (wp.x * 0.35 + cam_center.x * 0.65 * 0.35) * 7.0;
+	float tree_id = floor(tx);
+	float tree_seed = hash21(vec2(tree_id, 14.0));
+	float local = fract(tx) - 0.5 + (hash21(vec2(tree_id, 3.0)) - 0.5) * 0.3;
+	float tree_h = tree_seed > 0.3 ? 0.14 + pow(tree_seed, 2.0) * 0.38 : 0.0;
+	float tree_w = 0.42 * (1.0 - clamp(wp.y / max(tree_h, 0.001), 0.0, 1.0));
+	float treeline = 0.12 + 0.06 * value_noise(vec2(tx * 0.7, 2.0));
+	bool tree = wp.y >= 0.0 && (wp.y < treeline || (wp.y < tree_h && abs(local) < tree_w));
+	if (tree) {
+		ramp = RAMP_EDGE;
+		level = wp.y < treeline ? 2 : (local < 0.0 ? 1 : 3);
+		col = vec3(0.11, 0.13, 0.22);
+		sky = vec3(0.06, 0.07, 0.13);
+	}
+	// Над озером стелется туман: светлая полоса у воды, медленно плывёт.
+	float mist = smoothstep(0.9, 0.0, abs(wp.y - 0.15)) * fbm(vec2(wp.x * 0.35 - time * 0.06, wp.y * 2.0));
+	sky += vec3(0.10, 0.10, 0.18) * mist;
+	col += vec3(0.10, 0.10, 0.18) * mist;
 }
 
 
@@ -291,7 +368,8 @@ void fragment() {
 	float row_world = view_height * cell_h;
 	float grain = hash21(cell);
 	// Звёзды привязаны к небу, а не к камере: смещаются чуть-чуть, как бесконечно далёкие.
-	vec2 star_cell = cell + floor(cam_center * vec2(1.0, -1.0) / view_height * screen_px.y / cell_px * 0.08);
+	// Звёзды бесконечно далеко: закреплены на экране и не прыгают, когда камера едет.
+	vec2 star_cell = cell;
 
 	vec3 col = vec3(0.0);
 	// Цвет подложки под знаком; по умолчанию совпадает с цветом знака.
@@ -310,7 +388,7 @@ void fragment() {
 			vec2 mcell = floor(screen_of(mirror) / cell_px);
 			mcell = vec2(cell.x, mcell.y);
 			vec3 mirror_sky;
-			background(msp, mirror, mcell + floor(cam_center * vec2(1.0, -1.0) / view_height * screen_px.y / cell_px * 0.08), cell_h, col, mirror_sky, ramp, level);
+			background(msp, mirror, mcell, cell_h, col, mirror_sky, ramp, level);
 			col *= vec3(0.62, 0.68, 0.86);
 			under = mirror_sky * vec3(0.62, 0.68, 0.86);
 			backing = 0.62;
@@ -329,6 +407,25 @@ void fragment() {
 			// Небо — градиент под знаками, звёзды, метеоры и горы поверх него.
 			under = sky;
 			backing = 0.6;
+			float above = wp.y - ground;
+			// Сухие стебли у берега торчат из снега и клонятся по ветру.
+			// Редкие кустики: по два-три стебля рядом, разной высоты, верхушки клонит ветер.
+			float clump = hash21(vec2(floor(cell.x / 5.0), 91.0));
+			float stalk_seed = hash21(vec2(cell.x, 37.0));
+			float near_shore = smoothstep(6.0, 2.0, wp.x) * step(0.5, wp.x);
+			float stalk_height = (0.08 + stalk_seed * 0.26) * near_shore;
+			if (clump > 0.62 && stalk_seed > 0.45 && above < stalk_height) {
+				float sway = sin(time * 1.6 + cell.x * 0.7) * 0.5 + 0.5;
+				ramp = RAMP_EDGE;
+				level = above > stalk_height * 0.55 ? (sway > 0.5 ? 1 : 3) : 0;
+				col = vec3(0.50, 0.45, 0.40) * (0.7 + 0.3 * stalk_seed);
+			}
+			// Позёмка: ветер гонит над склоном редкие снежинки.
+			if (above < 1.4 && hash21(vec2(cell.x - floor(time * 7.0 + cell.y * 0.3), cell.y)) > 0.994) {
+				ramp = RAMP_FLAKE;
+				level = 0;
+				col = vec3(0.86, 0.90, 1.0) * (1.0 - above / 1.4);
+			}
 			float snow = 0.0;
 			if (pine_at(wp, snow) < 0.5) {
 				ramp = RAMP_DENSE;
