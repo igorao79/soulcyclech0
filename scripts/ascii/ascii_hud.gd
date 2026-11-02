@@ -8,7 +8,7 @@ var font_size := 14
 var cell := Vector2i(8, 16)
 var grid := Vector2i(160, 45)
 
-var hint_text := "WASD ходить   E действие   1/2 персонаж   ESC выход"
+var hint_text := "WASD ходить   E действие   1/2 персонаж   ESC меню"
 var title_alpha := 1.0
 var tags: Array[Dictionary] = []
 var dialogue_speaker := ""

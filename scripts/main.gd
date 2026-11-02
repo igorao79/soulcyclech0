@@ -233,6 +233,7 @@ func _build_music() -> void:
 	music.name = "WinterTheme"
 	music.stream = looped_theme
 	music.volume_db = -20.0
+	music.bus = &"Music"
 	add_child(music)
 	music.play()
 

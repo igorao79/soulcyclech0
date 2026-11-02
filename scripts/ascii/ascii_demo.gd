@@ -135,9 +135,6 @@ func _process(delta: float) -> void:
 	if not ready_to_play:
 		return
 	elapsed += delta
-	if Input.is_action_just_pressed("ascii_quit"):
-		get_tree().quit()
-		return
 
 	if dialogue_lines.is_empty() and not resetting:
 		_handle_character_switch()
@@ -161,9 +158,12 @@ func _configure_window() -> void:
 	var scale := DisplayServer.screen_get_scale()
 	var usable := DisplayServer.screen_get_usable_rect().size
 	var wanted := Vector2i(Vector2(WINDOW_SIZE) * scale)
-	window.size = Vector2i(mini(wanted.x, usable.x), mini(wanted.y, usable.y))
-	window.position = DisplayServer.screen_get_usable_rect().position + (usable - window.size) / 2
-	window.title = "Soulcycle — ASCII"
+	var fitted := Vector2i(mini(wanted.x, usable.x), mini(wanted.y, usable.y))
+	# Полный экран из настроек не трогаем; окно двигаем, только если его размер другой.
+	if window.mode == Window.MODE_WINDOWED and window.size != fitted:
+		window.size = fitted
+		window.position = DisplayServer.screen_get_usable_rect().position + (usable - window.size) / 2
+	window.title = "Цикл душ — ночь символов"
 	font_size = roundi(BASE_FONT_SIZE * scale)
 
 
@@ -656,12 +656,14 @@ func _build_audio() -> void:
 	music = AudioStreamPlayer.new()
 	music.stream = looped_theme
 	music.volume_db = -20.0
+	music.bus = &"Music"
 	add_child(music)
 	music.play()
 
 	bell_player = AudioStreamPlayer.new()
 	bell_player.stream = BellSynth.create()
 	bell_player.volume_db = -7.0
+	bell_player.bus = &"SFX"
 	add_child(bell_player)
 
 	_build_step_bus()
@@ -674,9 +676,14 @@ func _build_audio() -> void:
 
 # Срез верхов убирает щелчок в начале шага, короткий хвост склеивает шаги между собой.
 func _build_step_bus() -> void:
+	# Шина живёт дольше сцены: при повторном входе из меню её не создаём заново.
+	if AudioServer.get_bus_index(STEP_BUS) >= 0:
+		return
 	AudioServer.add_bus()
 	var bus := AudioServer.bus_count - 1
 	AudioServer.set_bus_name(bus, STEP_BUS)
+	# Шаги идут через общую шину звуков, чтобы их громкость задавалась в настройках.
+	AudioServer.set_bus_send(bus, &"SFX")
 	var low_pass := AudioEffectLowPassFilter.new()
 	low_pass.cutoff_hz = 3600.0
 	AudioServer.add_bus_effect(bus, low_pass)
@@ -720,7 +727,6 @@ func _install_input_actions() -> void:
 	_add_key_to_action("interact", KEY_ENTER)
 	_add_key_to_action("switch_character_1", KEY_1)
 	_add_key_to_action("switch_character_2", KEY_2)
-	_add_key_to_action("ascii_quit", KEY_ESCAPE)
 
 
 func _add_key_to_action(action_name: StringName, keycode: Key) -> void:

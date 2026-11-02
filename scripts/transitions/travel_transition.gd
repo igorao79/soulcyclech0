@@ -261,6 +261,7 @@ func _build_audio() -> void:
 		var footstep_player := AudioStreamPlayer.new()
 		footstep_player.name = "TravelFootstep%d" % (voice_index + 1)
 		footstep_player.volume_db = -5.5
+		footstep_player.bus = &"SFX"
 		add_child(footstep_player)
 		footstep_players.append(footstep_player)
 

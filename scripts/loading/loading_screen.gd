@@ -10,6 +10,7 @@ const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const BellSynth := preload("res://scripts/audio/bell_synth.gd")
 const SCREEN_SHADER := preload("res://scripts/loading/loading_screen.gdshader")
 
+const TITLE_SCENE := "res://scenes/title.tscn"
 const MAIN_SCENE := "res://scenes/main.tscn"
 const ASCII_SCENE := "res://scenes/ascii_demo.tscn"
 # С флагами предпросмотра экран не ждёт клавишу: их запускают для снимков.
@@ -20,6 +21,7 @@ const BASE_FONT_SIZE := 8
 const MIN_DURATION := 3.4
 const INTRO_TIME := 1.1
 const OUTRO_TIME := 1.25
+const AUTO_CONTINUE := 1.8
 const TOLL_FADE := 0.55
 const LORE_PERIOD := 4.6
 const TITLE := "S O U L C Y C L E"
@@ -33,7 +35,7 @@ const LORE: Array[String] = [
 	"Чёрный цветок звенит только для тех, кто уже стоял у воды.",
 ]
 
-var target_path := MAIN_SCENE
+var target_path := TITLE_SCENE
 var skip_screen := false
 var font: SystemFont
 var font_size := BASE_FONT_SIZE
@@ -66,6 +68,8 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	if "--ascii" in args:
 		target_path = ASCII_SCENE
+	elif "--main" in args:
+		target_path = MAIN_SCENE
 	for flag in PREVIEW_FLAGS:
 		if flag in args:
 			skip_screen = true
@@ -79,6 +83,7 @@ func _ready() -> void:
 	bell_task = WorkerThreadPool.add_task(func() -> void: bell_stream = BellSynth.create(0.94))
 	bell_player = AudioStreamPlayer.new()
 	bell_player.volume_db = -9.0
+	bell_player.bus = &"SFX"
 	add_child(bell_player)
 
 	var window := get_window()
@@ -115,6 +120,9 @@ func _process(delta: float) -> void:
 	if ready_time < 0.0 and shown >= 1.0 and loaded >= 1.0:
 		ready_time = elapsed
 		_toll(1.6)
+	# Полная луна держится мгновение, потом ночь начинается сама. Клавиша — не ждать.
+	if ready_time >= 0.0 and not leaving and elapsed - ready_time > AUTO_CONTINUE:
+		_leave()
 
 	# Колокол — затухающий маятник, как в ASCII-ночи.
 	bell_velocity += (-bell_angle * 7.0 - bell_velocity * 0.4) * delta
@@ -239,7 +247,7 @@ func _draw_overlay() -> void:
 		_centered(grid.x / 2, bottom - 3, percent, Color(0.62, 0.68, 0.86, 0.8 * fade))
 	else:
 		var pulse := 0.55 + 0.45 * sin((elapsed - ready_time) * 3.0)
-		var prompt := "нажми любую клавишу — ночь начнётся"
+		var prompt := "ночь начинается…"
 		_centered(grid.x / 2, bottom - 3, prompt, Color(0.96, 0.74, 0.44, pulse * fade))
 
 	_draw_lore(grid.x / 2, bottom, fade)

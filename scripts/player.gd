@@ -138,6 +138,7 @@ func _build_footsteps() -> void:
 	for voice_index in range(2):
 		var footstep_player := AudioStreamPlayer.new()
 		footstep_player.name = "FootstepPlayer%d" % (voice_index + 1)
+		footstep_player.bus = &"SFX"
 		add_child(footstep_player)
 		footstep_players.append(footstep_player)
 
