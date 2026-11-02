@@ -13,6 +13,8 @@ const int RAMP_DENSE = 5;
 const int RAMP_RIPPLE = 13;
 const vec3 LUMA = vec3(0.3, 0.55, 0.15);
 const int METEORS = 16;
+// Болид идёт медленнее всех: его успевают проводить взглядом.
+const float BIG_SPEED = 0.26;
 
 uniform sampler2D atlas_tex : filter_nearest, repeat_disable;
 uniform vec2 cell_px = vec2(5.0, 8.0);
@@ -20,7 +22,7 @@ uniform vec2 screen_px = vec2(1440.0, 810.0);
 // Камера: центр кадра в мире и сколько мира помещается по высоте экрана.
 uniform vec2 cam_center = vec2(4.0, 2.0);
 uniform float view_height = 12.0;
-// Чаще к концу заставки; 0 — звёзды не падают.
+// Сколько звёзд падает: к концу заставки больше; 0 — ни одной. Скорость от неё не зависит.
 uniform float meteor_rate = 1.0;
 // Большой болид: x — время с начала (меньше нуля — нет), yz — откуда, w — угол.
 uniform vec4 big_meteor = vec4(-1.0, 0.0, 0.0, 0.0);
@@ -69,7 +71,7 @@ void meteor_trace(vec2 sp, float cell_h, vec2 start, vec2 dir, float age, float 
 	vec2 normal = vec2(-dir.y, dir.x);
 	float across = abs(dot(to_p, normal));
 	float burnt_out = max(age - reach / speed, 0.0);
-	float head_alive = 1.0 - smoothstep(0.0, 0.25, burnt_out);
+	float head_alive = 1.0 - smoothstep(0.0, 0.5, burnt_out);
 
 	// Ореол у головы подсвечивает соседние ячейки, не меняя знака.
 	float r = length(to_p * vec2(1.0, 1.3)) / cell_h;
@@ -80,11 +82,11 @@ void meteor_trace(vec2 sp, float cell_h, vec2 start, vec2 dir, float age, float 
 	}
 	// Возраст этой точки следа: сколько прошло с тех пор, как через неё прошла голова.
 	float passed = max(along, 0.0) / speed;
-	float train = 1.0 - smoothstep(0.0, 0.85, passed - 0.05 + burnt_out * 0.6);
+	float train = 1.0 - smoothstep(0.0, 1.7, passed - 0.1 + burnt_out * 0.5);
 	if (train <= 0.0) {
 		return;
 	}
-	float heat = exp(-passed * 5.0);
+	float heat = exp(-passed * 2.4);
 	vec3 c = mix(tint * 0.55, vec3(1.0, 0.96, 0.88), heat) * bright * train * 1.5;
 	float lum = dot(c, LUMA);
 	if (lum <= best) {
@@ -95,7 +97,7 @@ void meteor_trace(vec2 sp, float cell_h, vec2 start, vec2 dir, float age, float 
 	if (along < cell_h * 0.7 && head_alive > 0.3) {
 		new_ramp = RAMP_FLAKE;
 		new_level = 6;
-	} else if (passed >= 0.12) {
+	} else if (passed >= 0.3) {
 		// Старый след рассыпается на мерцающие искры.
 		float spark = hash21(floor(sp / cell_h) + seed + floor(time * 12.0));
 		if (spark < 0.45) {
@@ -124,38 +126,44 @@ bool meteor_at(vec2 sp, float cell_h, out vec3 col, out int ramp, out int level,
 	if (meteor_rate > 0.0) {
 		for (int i = 0; i < METEORS; i++) {
 			float fi = float(i);
-			float period = 2.2 + hash21(vec2(fi, 1.0)) * 5.0;
-			float clock = time * meteor_rate + hash21(vec2(fi, 2.0)) * period;
+			float period = 4.0 + hash21(vec2(fi, 1.0)) * 7.0;
+			float clock = time + hash21(vec2(fi, 2.0)) * period;
 			float cycle = floor(clock / period);
 			float age = mod(clock, period);
+			// Частота звездопада решает, сколько мест загорится в этот раз, а не скорость полёта.
+			if (hash21(vec2(fi + 7.0, cycle)) > meteor_rate * 0.45) {
+				continue;
+			}
 			float kind = hash21(vec2(fi, cycle + 3.0));
-			float life = kind > 0.8 ? 1.6 : 1.1;
+			// Звёзды плывут медленно: путь — секунда-полторы, потом ещё долго тлеет след.
+			float speed = 0.22 + kind * 0.14;
+			float reach_of = kind > 0.8 ? 0.42 : (kind > 0.35 ? 0.26 : 0.14);
+			float life = reach_of / speed + 1.8;
 			if (age > life) {
 				continue;
 			}
 			vec2 start = vec2(hash21(vec2(fi, cycle)) * (aspect + 0.3) - 0.3, 0.02 + hash21(vec2(cycle, fi)) * 0.32);
 			vec2 dir = normalize(start - radiant + vec2(0.0, 0.25));
 			float bright = kind > 0.8 ? 1.25 : (kind > 0.35 ? 0.75 : 0.4);
-			float reach = kind > 0.8 ? 0.42 : (kind > 0.35 ? 0.26 : 0.14);
 			float hue = hash21(vec2(cycle, fi + 9.0));
 			vec3 tint = hue > 0.85 ? vec3(0.55, 1.0, 0.75) : (hue > 0.6 ? vec3(1.0, 0.78, 0.45) : vec3(0.60, 0.70, 1.0));
-			meteor_trace(sp, cell_h, start, dir, age, 0.65 + kind * 0.4, reach, bright, tint, fi, col, ramp, level, best, halo);
+			meteor_trace(sp, cell_h, start, dir, age, speed, reach_of, bright, tint, fi, col, ramp, level, best, halo);
 		}
 	}
-	if (big_meteor.x >= 0.0 && big_meteor.x < 3.2) {
+	if (big_meteor.x >= 0.0 && big_meteor.x < 7.0) {
 		float age = big_meteor.x;
 		vec2 start = big_meteor.yz;
 		vec2 dir = vec2(cos(big_meteor.w), sin(big_meteor.w));
-		meteor_trace(sp, cell_h, start, dir, age, 0.55, 0.75, 2.2, vec3(1.0, 0.82, 0.55), 40.0, col, ramp, level, best, halo);
+		meteor_trace(sp, cell_h, start, dir, age, BIG_SPEED, 0.75, 2.2, vec3(1.0, 0.82, 0.55), 40.0, col, ramp, level, best, halo);
 		// В конце пути болид раскалывается: осколки расходятся веером и гаснут.
-		float split = age - 0.75 / 0.55;
+		float split = age - 0.75 / BIG_SPEED;
 		if (split > 0.0) {
 			vec2 burst = start + dir * 0.75;
 			for (int k = 0; k < 5; k++) {
 				float fk = float(k);
 				float angle = atan(dir.y, dir.x) + (fk - 2.0) * 0.16;
 				vec2 shard_dir = vec2(cos(angle), sin(angle));
-				meteor_trace(sp, cell_h, burst, shard_dir, split, 0.35, 0.10 + hash21(vec2(fk, 5.0)) * 0.08,
+				meteor_trace(sp, cell_h, burst, shard_dir, split, 0.12, 0.10 + hash21(vec2(fk, 5.0)) * 0.08,
 					1.0, vec3(1.0, 0.62, 0.40), 50.0 + fk, col, ramp, level, best, halo);
 			}
 		}
@@ -169,7 +177,7 @@ float sky_flash() {
 	if (big_meteor.x < 0.0) {
 		return 0.0;
 	}
-	float burst = big_meteor.x - 0.75 / 0.55;
+	float burst = big_meteor.x - 0.75 / BIG_SPEED;
 	return exp(-burst * burst * 18.0) * 0.55;
 }
 
