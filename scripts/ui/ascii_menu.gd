@@ -168,7 +168,7 @@ func _draw_line(column: int, row: int, line: String, index: int, is_selected: bo
 		var scrambled := since_open < settle
 		if is_selected and since_flash < 0.22 and _hash(i, int(_time * 30.0)) < 0.45:
 			scrambled = true
-		if not is_selected and _hash(i + index * 31, int(_time * 12.0)) > 0.997:
+		if not is_selected and _hash(i + index * 31, int(_time * 24.0)) > 0.9993:
 			scrambled = true
 		if scrambled and letter != " ":
 			letter = SCRAMBLE[int(_hash(i * 7 + index, int(_time * 24.0)) * SCRAMBLE.length()) % SCRAMBLE.length()]

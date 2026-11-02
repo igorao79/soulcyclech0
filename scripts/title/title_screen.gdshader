@@ -25,6 +25,8 @@ uniform vec4 calm_rect = vec4(0.0);
 uniform sampler2D title_mask : filter_linear, repeat_disable;
 uniform vec4 title_box = vec4(0.0);
 uniform float title_time = 0.0;
+// 0 — раскалённые буквы с углями, 1 — холодное лунное серебро с инеем.
+uniform int title_style = 0;
 
 
 float hash21(vec2 p) {
@@ -56,6 +58,19 @@ float title_cover(vec2 cell) {
 		}
 	}
 	return sum / 9.0;
+}
+
+
+// Самая закрытая точка ячейки: тонкий волосной штрих засечного шрифта не должен пропасть.
+float title_peak(vec2 cell) {
+	float peak = 0.0;
+	for (int y = 0; y < 3; y++) {
+		for (int x = 0; x < 3; x++) {
+			vec2 px = (cell + (vec2(float(x), float(y)) + 0.5) / 3.0) * cell_px;
+			peak = max(peak, texture(title_mask, px / screen_px).a);
+		}
+	}
+	return peak;
 }
 
 
@@ -159,22 +174,46 @@ void fragment() {
 		float shift = jolt > 0.975 ? (hash21(vec2(cell.y, floor(time * 7.0) + 5.0)) > 0.5 ? 2.0 : -2.0) : 0.0;
 		vec2 title_cell = cell + vec2(shift, 0.0);
 		cover = title_cover(title_cell);
+		if (cover <= 0.1 && title_peak(title_cell) > 0.45) {
+			cover = 0.3;
+		}
+		// На кромке и в тонком штрихе направление берём по тому, куда линия продолжается
+		// в соседних ячейках: волосная засечка выходит ровным «---», а не мусором.
+		int thin_level = -1;
+		if (cover > 0.1 && cover <= 0.5) {
+			float along_x = title_peak(title_cell + vec2(1.0, 0.0)) + title_peak(title_cell - vec2(1.0, 0.0));
+			float along_y = title_peak(title_cell + vec2(0.0, 1.0)) + title_peak(title_cell - vec2(0.0, 1.0));
+			float rising = title_peak(title_cell + vec2(1.0, -1.0)) + title_peak(title_cell + vec2(-1.0, 1.0));
+			float falling = title_peak(title_cell + vec2(-1.0, -1.0)) + title_peak(title_cell + vec2(1.0, 1.0));
+			float best = max(max(along_x, along_y), max(rising, falling));
+			float second = along_x + along_y + rising + falling - best;
+			if (best > 1.2 && best > second * 0.45) {
+				thin_level = best == along_y ? 0 : (best == rising ? 1 : (best == along_x ? 2 : 3));
+			}
+		}
 		float rise = clamp((center.y - title_box.y) / max(title_box.w, 1.0), 0.0, 1.0);
 		float heat = value_noise(title_cell * vec2(0.22, 0.45) + vec2(0.0, time * 1.6));
 		vec3 bone = vec3(0.96, 0.91, 0.83);
 		vec3 ember = vec3(1.0, 0.46, 0.22);
 		vec3 blood = vec3(0.78, 0.10, 0.16);
+		vec3 silver = vec3(0.86, 0.90, 1.0);
+		vec3 lilac = vec3(0.62, 0.58, 0.86);
+		bool frost = title_style == 1;
 		if (cover > 0.5) {
 			ramp = RAMP_DENSE;
 			level = clamp(12 + int(heat * 4.0), 12, 15);
 			col = mix(bone, ember, smoothstep(0.4, 0.95, heat) * (0.3 + 0.7 * rise));
+			if (frost) {
+				level = clamp(10 + int(heat * 5.0), 10, 15);
+				col = mix(silver, lilac, smoothstep(0.35, 0.95, heat) * (0.25 + 0.6 * rise));
+			}
 			backing = 0.62;
 		} else if (cover > 0.1) {
 			float gx_t = title_cover(title_cell + vec2(1.0, 0.0)) - title_cover(title_cell - vec2(1.0, 0.0));
 			float gy_t = (title_cover(title_cell + vec2(0.0, 1.0)) - title_cover(title_cell - vec2(0.0, 1.0))) * 1.4;
 			ramp = RAMP_EDGE;
-			level = int(floor(fract(atan(gy_t, gx_t) / PI + 1.0 / 8.0) * 4.0));
-			col = mix(blood, ember, heat) * 1.3;
+			level = thin_level >= 0 ? thin_level : int(floor(fract(atan(gy_t, gx_t) / PI + 1.0 / 8.0) * 4.0));
+			col = frost ? mix(vec3(0.55, 0.62, 0.95), vec3(1.0), heat) * 1.15 : mix(blood, ember, heat) * 1.3;
 			backing = 0.18;
 		} else if (center.y < title_box.y + title_box.w) {
 			// Над буквами поднимаются угли и гаснут по пути.
@@ -187,6 +226,9 @@ void fragment() {
 				ramp = RAMP_FLAKE;
 				level = hash21(id + 21.0) > 0.75 ? 5 : 0;
 				col = mix(vec3(0.85, 0.22, 0.14), vec3(1.0, 0.76, 0.42), glow) * (0.4 + glow * 0.9);
+				if (frost) {
+					col = mix(vec3(0.40, 0.46, 0.80), vec3(0.85, 0.92, 1.0), glow) * (0.4 + glow * 0.8);
+				}
 				glowing = true;
 				ember_cell = true;
 			}
@@ -196,7 +238,7 @@ void fragment() {
 		if (cover > 0.1 && settle < 0.0) {
 			ramp = RAMP_DENSE;
 			level = 4 + int(hash21(cell + floor(time * 20.0)) * 11.0);
-			col = blood * (title_time > 0.0 ? 1.1 : 0.0);
+			col = (frost ? lilac * 0.8 : blood * 1.1) * (title_time > 0.0 ? 1.0 : 0.0);
 			backing = 0.1;
 		}
 	}
