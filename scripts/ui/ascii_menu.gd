@@ -1,7 +1,7 @@
 class_name SoulcycleAsciiMenu
 extends Control
 
-# Меню из символов: те же моноширинные знаки, что и мир. Рамка ┌─┐, ползунки [███░░░],
+# Меню из символов: те же моноширинные знаки, что и мир. Заголовок антиквой, ползунки [███░░░],
 # переключатели [x]. Пункты расшифровываются из шума при появлении, выбранный тлеет.
 # Управление: стрелки или WASD, Enter / Space / E, Escape; мышь — наведение и щелчок.
 
@@ -18,11 +18,13 @@ const TEXT := Color(0.66, 0.70, 0.82)
 const DIM := Color(0.40, 0.44, 0.56)
 const EMBER := Color(1.0, 0.72, 0.42)
 const BONE := Color(0.94, 0.90, 0.84)
-const FRAME := Color(0.58, 0.16, 0.22)
+const SILVER := Color(0.86, 0.89, 0.98)
+const RULE := Color(0.55, 0.58, 0.72)
 const NOISE := Color(0.78, 0.22, 0.30)
 
-## Заголовок в верхней кромке рамки. Пусто — меню без рамки.
+## Заголовок над пунктами — антиквой, как надпись главного экрана. Пусто — без заголовка.
 var heading := ""
+var heading_size := 30.0
 var columns := 40
 ## Строк на пункт: 2 — с просветом, 1 — плотно.
 var spacing := 1
@@ -33,6 +35,8 @@ var selected := 0
 var settings: Node
 
 var _font: Font
+var _heading_font: Font
+var _heading_px := 30
 var _font_size := 16
 var _cell := Vector2i(10, 20)
 var _time := 0.0
@@ -44,6 +48,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_font = SoulcycleAsciiFontAtlas.create_font()
+	_heading_font = SoulcycleUiStyle.serif(600.0)
 	resized.connect(_fit)
 	_fit()
 
@@ -51,8 +56,9 @@ func _ready() -> void:
 ## Меню настроек: громкость по шинам, полный экран и вертикальная синхронизация.
 static func make_settings(game_settings: Node) -> SoulcycleAsciiMenu:
 	var menu := SoulcycleAsciiMenu.new()
-	menu.heading = "НАСТРОЙКИ"
-	menu.columns = 50
+	menu.heading = "Настройки"
+	menu.heading_size = 24.0
+	menu.columns = 44
 	menu.spacing = 2
 	menu.settings = game_settings
 	menu.add_slider(&"master_volume", "общая громкость")
@@ -84,11 +90,12 @@ func open() -> void:
 	queue_redraw()
 
 
-## Прямоугольник рамки в координатах этого Control: под ним притушивают фон.
+## Прямоугольник меню с заголовком в координатах этого Control: под ним притушивают фон.
 func box_rect() -> Rect2:
-	var origin := _origin()
-	var size := _box_size()
-	return Rect2(Vector2(origin * _cell), Vector2(size * _cell))
+	var top := _top()
+	return Rect2(
+		_block_left(), top, columns * _cell.x, _heading_height() + entries.size() * spacing * _cell.y
+	)
 
 
 func _process(delta: float) -> void:
@@ -100,57 +107,79 @@ func _process(delta: float) -> void:
 func _fit() -> void:
 	var scale := maxf(get_viewport_rect().size.y / SoulcycleUiStyle.LOGICAL_HEIGHT, 0.5)
 	_font_size = maxi(roundi(BASE_SIZE * scale), 8)
+	_heading_px = maxi(roundi(heading_size * scale), 12)
 	var advance := _font.get_char_size("M".unicode_at(0), _font_size).x
 	_cell = Vector2i(ceili(advance), roundi(_font_size * 1.35))
 
 
-func _box_size() -> Vector2i:
-	var rows := entries.size() * spacing
-	if heading != "":
-		rows += 4
-	return Vector2i(columns, rows)
+func _heading_height() -> float:
+	return _heading_px * 2.3 if heading != "" else 0.0
 
 
-func _origin() -> Vector2i:
-	var size := _box_size()
-	var middle := get_rect().size * center / Vector2(_cell)
-	return Vector2i(floori(middle.x - size.x * 0.5), floori(middle.y - size.y * 0.5))
+func _top() -> float:
+	var total := _heading_height() + entries.size() * spacing * _cell.y
+	return get_rect().size.y * center.y - total * 0.5
 
 
+func _block_left() -> float:
+	return floorf(get_rect().size.x * center.x / _cell.x - columns * 0.5) * _cell.x
+
+
+# Пункты стоят в той же сетке, что и знаки мира: строка — целое число ячеек.
 func _entry_row(index: int) -> int:
-	return _origin().y + (2 if heading != "" else 0) + index * spacing
+	return ceili((_top() + _heading_height()) / _cell.y) + index * spacing
+
+
+# Меню с ползунками выровнено по левому краю блока, простое — каждой строкой по центру.
+func _is_form() -> bool:
+	for entry in entries:
+		if entry["kind"] != &"button":
+			return true
+	return false
 
 
 func _draw() -> void:
-	var origin := _origin()
-	var size := _box_size()
 	if heading != "":
-		draw_rect(Rect2(Vector2(origin * _cell), Vector2(size * _cell)), Color(0.008, 0.008, 0.02, 0.93))
-		_draw_frame(origin, size)
-
+		_draw_heading()
+	var block := floori(_block_left() / _cell.x)
+	var form := _is_form()
 	for index in range(entries.size()):
 		var row := _entry_row(index)
 		var text := _entry_text(entries[index])
 		var is_selected := index == selected
 		var marker := "» " if is_selected else "  "
 		var line := marker + text
-		var start := origin.x + (3 if heading != "" else (size.x - line.length()) / 2)
+		var start := block + (0 if form else (columns - line.length()) / 2)
 		_draw_line(start, row, line, index, is_selected)
 
 
-func _draw_frame(origin: Vector2i, size: Vector2i) -> void:
-	var right := origin.x + size.x - 1
-	var bottom := origin.y + size.y - 1
-	var title := _spaced(heading)
-	var lead := (size.x - title.length() - 4) / 2
-	_draw_text(origin.x, origin.y, "┌" + "─".repeat(lead - 1) + "┤ ", FRAME)
-	_draw_text(origin.x + lead + 2, origin.y, title, BONE)
-	var tail := size.x - lead - 2 - title.length()
-	_draw_text(origin.x + lead + 2 + title.length(), origin.y, " ├" + "─".repeat(tail - 3) + "┐", FRAME)
-	for row in range(origin.y + 1, bottom):
-		_draw_text(origin.x, row, "│", FRAME)
-		_draw_text(right, row, "│", FRAME)
-	_draw_text(origin.x, bottom, "└" + "─".repeat(size.x - 2) + "┘", FRAME)
+# Заголовок антиквой вразрядку, под ним тонкая черта с ромбом. Проявляется при открытии.
+func _draw_heading() -> void:
+	var appear := clampf((_time - _opened_at) / 0.45, 0.0, 1.0)
+	var tracking := _heading_px * 0.32
+	var width := 0.0
+	for i in range(heading.length()):
+		width += _heading_font.get_string_size(heading[i], HORIZONTAL_ALIGNMENT_LEFT, -1, _heading_px).x + tracking
+	width -= tracking
+	var x := get_rect().size.x * center.x - width * 0.5
+	var baseline := _top() + _heading_px * 1.05
+	var color := Color(SILVER, appear)
+	for i in range(heading.length()):
+		var letter := heading[i]
+		_heading_font.draw_string(get_canvas_item(), Vector2(x, baseline).floor(), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, _heading_px, color)
+		x += _heading_font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, _heading_px).x + tracking
+
+	var mid := Vector2(get_rect().size.x * center.x, _top() + _heading_px * 1.55)
+	var reach := maxf(width * 0.5, _heading_px * 3.0) * appear
+	var gap := _heading_px * 0.35
+	var line_color := Color(RULE, 0.8 * appear)
+	draw_line(mid - Vector2(reach, 0.0), mid - Vector2(gap, 0.0), line_color, 1.0)
+	draw_line(mid + Vector2(gap, 0.0), mid + Vector2(reach, 0.0), line_color, 1.0)
+	var tip := _heading_px * 0.16
+	draw_colored_polygon(
+		PackedVector2Array([mid + Vector2(0, -tip), mid + Vector2(tip, 0), mid + Vector2(0, tip), mid + Vector2(-tip, 0)]),
+		Color(EMBER, appear)
+	)
 
 
 # Строка пункта: при появлении знаки встают на место слева направо, выбранный пункт
@@ -287,16 +316,9 @@ func _activate() -> void:
 
 
 func _click_slider(entry: Dictionary, column: int) -> void:
-	var bar_start := _origin().x + (3 if heading != "" else 0) + 2 + LABEL_COLUMNS + 1
+	var bar_start := floori(_block_left() / _cell.x) + 2 + LABEL_COLUMNS + 1
 	var fraction := clampf(float(column - bar_start + 1) / BAR_CELLS, 0.0, 1.0)
 	settings.set_option(entry["id"], snappedf(fraction, 0.05))
-
-
-func _spaced(text: String) -> String:
-	var letters := PackedStringArray()
-	for i in range(text.length()):
-		letters.append(text[i])
-	return " ".join(letters)
 
 
 func _hash(a: int, b: int) -> float:

@@ -1,10 +1,19 @@
 extends CanvasLayer
 
 # Автозагрузка PauseMenu: Escape в игре ставит мир на паузу и открывает меню из символов.
-# На загрузочном и главном экранах меню не открывается: там своё.
+# На главном экране меню не открывается: там своё.
 
 const TITLE_SCENE := "res://scenes/title.tscn"
 const GAMEPLAY_SCENES: Array[String] = ["res://scenes/main.tscn", "res://scenes/ascii_demo.tscn"]
+const VEIL_SHADER := """
+shader_type canvas_item;
+
+void fragment() {
+	vec2 p = (UV - 0.5) * vec2(1.6, 1.0);
+	float edge = smoothstep(0.15, 0.85, length(p));
+	COLOR = vec4(0.004, 0.004, 0.016, mix(0.84, 0.96, edge));
+}
+"""
 
 var _root: Control
 var _menu: SoulcycleAsciiMenu
@@ -19,14 +28,19 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_root)
 
+	# Мир под меню не исчезает: он гаснет к краям и остаётся различим в середине.
 	var dim := ColorRect.new()
-	dim.color = Color(0.0, 0.0, 0.012, 0.7)
+	var veil := ShaderMaterial.new()
+	veil.shader = Shader.new()
+	veil.shader.code = VEIL_SHADER
+	dim.material = veil
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
 
 	_menu = SoulcycleAsciiMenu.new()
-	_menu.heading = "ПАУЗА"
+	_menu.heading = "Пауза"
+	_menu.heading_size = 40.0
 	_menu.columns = 30
 	_menu.spacing = 2
 	_menu.add_button(&"resume", "продолжить")

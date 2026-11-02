@@ -44,6 +44,8 @@ var drawing := false
 
 func _ready() -> void:
 	get_tree().paused = false
+	if _skip_to_game():
+		return
 	title_font = SoulcycleUiStyle.serif(700.0)
 	var window := get_window()
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
@@ -173,6 +175,21 @@ func _update_calm_rect() -> void:
 	var active := settings_menu if settings_menu.visible else menu
 	var area := title_area.merge(active.box_rect().grow(8.0))
 	screen_material.set_shader_parameter("calm_rect", Vector4(area.position.x, area.position.y, area.size.x, area.size.y))
+
+
+# Сразу в игру, минуя меню: --ascii — ASCII-ночь, --main и флаги предпросмотра — основная игра.
+func _skip_to_game() -> bool:
+	var args := OS.get_cmdline_user_args()
+	var target := ""
+	if "--ascii" in args:
+		target = ASCII_SCENE
+	elif "--main" in args or "--dialogue-preview" in args or "--battle-preview" in args or "--travel-preview" in args:
+		target = MAIN_SCENE
+		get_window().content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	if target == "":
+		return false
+	get_tree().change_scene_to_file.call_deferred(target)
+	return true
 
 
 func _on_menu(id: StringName) -> void:
