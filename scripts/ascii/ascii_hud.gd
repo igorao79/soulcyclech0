@@ -1,6 +1,11 @@
 class_name SoulcycleAsciiHud
 extends Control
 
+# Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
+# не всегда знает новые глобальные классы, и сцена падала при переходе.
+const UiStyle := preload("res://scripts/ui/ui_style.gd")
+const DialogueView := preload("res://scripts/ui/dialogue_view.gd")
+
 
 var font: Font
 var font_size := 14
@@ -41,8 +46,8 @@ func _draw() -> void:
 
 func _draw_dialogue() -> void:
 	if _serif == null:
-		_serif = SoulcycleUiStyle.serif(600.0)
-	SoulcycleDialogueView.draw(
+		_serif = UiStyle.serif(600.0)
+	DialogueView.draw(
 		self, font, _serif, dialogue_speaker, Color(0.86, 0.89, 0.98), dialogue_text, dialogue_visible_chars, _clock
 	)
 

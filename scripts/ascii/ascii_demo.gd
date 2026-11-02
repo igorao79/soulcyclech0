@@ -1,6 +1,11 @@
 class_name SoulcycleAsciiDemo
 extends Node
 
+const CharacterProfile := preload("res://scripts/dialogue/character_profile.gd")
+const AsciiWorld := preload("res://scripts/ascii/ascii_world.gd")
+const AsciiHud := preload("res://scripts/ascii/ascii_hud.gd")
+const AsciiGrassField := preload("res://scripts/ascii/ascii_grass_field.gd")
+
 const CharacterCatalog := preload("res://scripts/dialogue/character_catalog.gd")
 const DialogueCatalog := preload("res://scripts/dialogue/dialogue_catalog.gd")
 const BELL_WRAITH := preload("res://data/battle/actors/bell_wraith.tres")
@@ -28,7 +33,6 @@ const FOOTSTEPS := {
 	],
 }
 
-const WINDOW_SIZE := Vector2i(1440, 810)
 const BASE_FONT_SIZE := 8
 const VIEW_HEIGHT := 7.4
 const CAMERA_TILT := deg_to_rad(42.0)
@@ -70,9 +74,9 @@ var world_layout := &"crossroads"
 ## В главе герой один (Безымянный), музыку ведёт сама глава, событий перекрёстка нет.
 var chapter_mode := false
 
-var world: SoulcycleAsciiWorld
-var grass_field := SoulcycleAsciiGrassField.new()
-var hud: SoulcycleAsciiHud
+var world: AsciiWorld
+var grass_field := AsciiGrassField.new()
+var hud: AsciiHud
 var font: SystemFont
 var font_size := BASE_FONT_SIZE
 var cell := Vector2i(8, 14)
@@ -87,7 +91,7 @@ var figure_material: ShaderMaterial
 var glyph_material: ShaderMaterial
 var ready_to_play := false
 
-var player_position := SoulcycleAsciiWorld.SPAWN
+var player_position := AsciiWorld.SPAWN
 var player_height := 0.3
 var player_yaw := 0.0
 var target_yaw := 0.0
@@ -100,7 +104,7 @@ var coat_offset := Vector2.ZERO
 var coat_velocity := Vector2.ZERO
 var coat_lag := Vector2.ZERO
 var character_index := 0
-var camera_position := SoulcycleAsciiWorld.SPAWN
+var camera_position := AsciiWorld.SPAWN
 var elapsed := 0.0
 
 var ripples: Array[Vector3] = []
@@ -131,7 +135,7 @@ func _ready() -> void:
 	_install_input_actions()
 	_configure_window()
 	font = FontAtlas.create_font()
-	world = SoulcycleAsciiWorld.new(world_layout)
+	world = AsciiWorld.new(world_layout)
 	player_position = world.spawn
 	camera_position = world.spawn
 	player_height = world.stand_height(world.spawn)
@@ -164,19 +168,14 @@ func _process(delta: float) -> void:
 	_update_hud()
 
 
+# Окно не трогаем: его размер задан проектом (1440×810) и настройками (полный экран).
+# Раньше сцена сама растягивала окно на масштаб экрана, и на Retina оно разворачивалось почти на весь экран.
 func _configure_window() -> void:
 	var window := get_window()
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
-	var scale := DisplayServer.screen_get_scale()
-	var usable := DisplayServer.screen_get_usable_rect().size
-	var wanted := Vector2i(Vector2(WINDOW_SIZE) * scale)
-	var fitted := Vector2i(mini(wanted.x, usable.x), mini(wanted.y, usable.y))
-	# Полный экран из настроек не трогаем; окно двигаем, только если его размер другой.
-	if window.mode == Window.MODE_WINDOWED and window.size != fitted:
-		window.size = fitted
-		window.position = DisplayServer.screen_get_usable_rect().position + (usable - window.size) / 2
-	window.title = "Цикл душ — ночь символов"
-	font_size = roundi(BASE_FONT_SIZE * scale)
+	if not chapter_mode:
+		window.title = "Цикл душ — ночь символов"
+	font_size = roundi(BASE_FONT_SIZE * DisplayServer.screen_get_scale())
 
 
 func _build_screen() -> void:
@@ -226,7 +225,7 @@ func _build_screen() -> void:
 	glyph_rect.material = glyph_material
 	layer.add_child(glyph_rect)
 
-	hud = SoulcycleAsciiHud.new()
+	hud = AsciiHud.new()
 	hud.font = font
 	hud.font_size = font_size
 	hud.cell = cell
@@ -259,7 +258,7 @@ func _set_scene_parameter(parameter: StringName, value: Variant) -> void:
 func _push_static_uniforms() -> void:
 	_set_scene_parameter("world_map", world.map_texture)
 	_set_scene_parameter("prop_map", world.prop_texture)
-	_set_scene_parameter("world_size", SoulcycleAsciiWorld.SIZE)
+	_set_scene_parameter("world_size", AsciiWorld.SIZE)
 	_set_scene_parameter("ruins_on", 1.0 if world.layout == &"crossroads" else 0.0)
 	_set_scene_parameter("cam_sin", sin(CAMERA_TILT))
 	_set_scene_parameter("cam_cos", cos(CAMERA_TILT))
@@ -270,7 +269,7 @@ func _push_static_uniforms() -> void:
 	_set_scene_parameter("chapel_pos", Vector3(chapel.x, 0.1, chapel.y))
 	_set_scene_parameter("flower_pos", _far_or_ground(world.flower))
 	_set_scene_parameter("pier_rect", world.pier_rect)
-	_set_scene_parameter("pier_top", SoulcycleAsciiWorld.PIER_TOP)
+	_set_scene_parameter("pier_top", AsciiWorld.PIER_TOP)
 
 	var lantern_data := PackedVector3Array(world.lanterns)
 	while lantern_data.size() < 10:
@@ -352,7 +351,7 @@ func _handle_movement(delta: float, has_control: bool = true) -> void:
 	delta = minf(delta, MAX_FRAME_TIME)
 	# В воде идти тем тяжелее, чем глубже: у кромки почти как по берегу.
 	var depth := 0.0 if world.is_on_pier(player_position) else clampf(
-		-world.height_at(player_position) / SoulcycleAsciiWorld.WADE_DEPTH, 0.0, 1.0
+		-world.height_at(player_position) / AsciiWorld.WADE_DEPTH, 0.0, 1.0
 	)
 	var top_speed := WALK_SPEED * lerpf(1.0, WADE_SPEED, depth)
 	var rate := WALK_ACCEL if direction != Vector2.ZERO else WALK_BRAKE
@@ -629,7 +628,7 @@ func _apply_speaker(speaker: StringName) -> void:
 		hud.dialogue_color = BELL_WRAITH.accent_color
 		return
 	var is_player := speaker == &"" or speaker == &"nameless" or speaker == &"wanderer"
-	var profile: SoulcycleCharacterProfile = (
+	var profile: CharacterProfile = (
 		CharacterCatalog.get_playable_profile(character_index)
 		if is_player
 		else CharacterCatalog.get_profile(speaker)

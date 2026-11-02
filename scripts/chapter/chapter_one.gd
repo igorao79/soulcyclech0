@@ -1,6 +1,10 @@
 class_name SoulcycleChapterOne
 extends Node
 
+# Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
+# не всегда знает новые глобальные классы, и сцена падала при переходе.
+const UiStyle := preload("res://scripts/ui/ui_style.gd")
+
 # Глава первая, «Звездопад».
 # 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном склоне над озером,
 #    над ним идёт звездопад. Под конец болид, он встаёт.
@@ -44,7 +48,7 @@ var overlay: Control
 var curtain: ColorRect
 var serif: Font
 var music: AudioStreamPlayer
-var demo: SoulcycleAsciiDemo
+var demo: AsciiDemo
 
 var beat := Beat.CARD
 var beat_time := 0.0
@@ -65,7 +69,7 @@ func _ready() -> void:
 	var window := get_window()
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	window.title = "Цикл душ — Глава первая"
-	serif = SoulcycleUiStyle.serif(600.0)
+	serif = UiStyle.serif(600.0)
 	_build_audio()
 	var mono := FontAtlas.create_font()
 	var font_size := roundi(BASE_FONT_SIZE * DisplayServer.screen_get_scale())
@@ -135,7 +139,7 @@ func _standing() -> void:
 # Кадр гаснет, а в темноте уже собирается вид сверху: та же ночь, тот же берег.
 func _to_top() -> void:
 	fade = clampf(beat_time / TO_TOP_TIME, 0.0, 1.0)
-	if beat_time >= TO_TOP_TIME and demo == null:
+	if beat_time >= TO_TOP_TIME and screen_material != null:
 		curtain.color.a = 1.0
 		screen_layer.queue_free()
 		screen_material = null
@@ -254,7 +258,7 @@ func _fit() -> void:
 
 func _draw_overlay() -> void:
 	var size := overlay.get_rect().size
-	var scale := size.y / SoulcycleUiStyle.LOGICAL_HEIGHT
+	var scale := size.y / UiStyle.LOGICAL_HEIGHT
 	if beat == Beat.CARD:
 		var alpha := clampf((beat_time - 0.6) / 0.9, 0.0, 1.0) * clampf((4.2 - beat_time) / 0.9, 0.0, 1.0)
 		if alpha > 0.0:

@@ -1,6 +1,8 @@
 class_name SoulcycleDialogueCatalog
 extends RefCounted
 
+const DialogueTheme := preload("res://scripts/dialogue/dialogue_theme.gd")
+
 const THEMES := {
 	&"crimson": preload("res://data/dialogue/themes/crimson.tres"),
 	&"frost": preload("res://data/dialogue/themes/frost.tres"),
@@ -29,8 +31,8 @@ const SEQUENCES := {
 }
 
 
-static func get_theme(theme_id: StringName) -> SoulcycleDialogueTheme:
-	return THEMES.get(theme_id, THEMES[&"crimson"]) as SoulcycleDialogueTheme
+static func get_theme(theme_id: StringName) -> DialogueTheme:
+	return THEMES.get(theme_id, THEMES[&"crimson"]) as DialogueTheme
 
 
 static func get_sequence(sequence_id: StringName) -> Array:

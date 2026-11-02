@@ -1,6 +1,10 @@
 class_name SoulcycleDialogueView
 extends RefCounted
 
+# Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
+# не всегда знает новые глобальные классы, и сцена падала при переходе.
+const UiStyle := preload("res://scripts/ui/ui_style.gd")
+
 # Реплика внизу экрана без рамки: тень снизу, имя антиквой вразрядку, черта с ромбом,
 # текст моноширинной сеткой печатается по буквам, последние две ещё мечутся.
 # Когда реплика допечатана, мигает «»» — можно листать дальше.
@@ -17,7 +21,7 @@ static func draw(
 	text: String, visible_chars: int, time: float
 ) -> void:
 	var size := canvas.get_rect().size
-	var scale := size.y / SoulcycleUiStyle.LOGICAL_HEIGHT
+	var scale := size.y / UiStyle.LOGICAL_HEIGHT
 	var top := size.y * 0.68
 	canvas.draw_polygon(
 		PackedVector2Array([Vector2(0, top), Vector2(size.x, top), Vector2(size.x, size.y), Vector2(0, size.y)]),

@@ -1,6 +1,12 @@
 class_name SoulcycleAsciiMenu
 extends Control
 
+const AsciiFontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
+
+# Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
+# не всегда знает новые глобальные классы, и сцена падала при переходе.
+const UiStyle := preload("res://scripts/ui/ui_style.gd")
+
 # Меню из символов: те же моноширинные знаки, что и мир. Заголовок антиквой, ползунки [███░░░],
 # переключатели [x]. Пункты расшифровываются из шума при появлении, выбранный тлеет.
 # Управление: стрелки или WASD, Enter / Space / E, Escape; мышь — наведение и щелчок.
@@ -47,15 +53,15 @@ var _flash_at := -10.0
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_font = SoulcycleAsciiFontAtlas.create_font()
-	_heading_font = SoulcycleUiStyle.serif(600.0)
+	_font = AsciiFontAtlas.create_font()
+	_heading_font = UiStyle.serif(600.0)
 	resized.connect(_fit)
 	_fit()
 
 
 ## Меню настроек: громкость по шинам, полный экран и вертикальная синхронизация.
-static func make_settings(game_settings: Node) -> SoulcycleAsciiMenu:
-	var menu := SoulcycleAsciiMenu.new()
+static func make_settings(game_settings: Node) -> Control:
+	var menu = load("res://scripts/ui/ascii_menu.gd").new()
 	menu.heading = "Настройки"
 	menu.heading_size = 24.0
 	menu.columns = 44
@@ -105,7 +111,7 @@ func _process(delta: float) -> void:
 
 
 func _fit() -> void:
-	var scale := maxf(get_viewport_rect().size.y / SoulcycleUiStyle.LOGICAL_HEIGHT, 0.5)
+	var scale := maxf(get_viewport_rect().size.y / UiStyle.LOGICAL_HEIGHT, 0.5)
 	_font_size = maxi(roundi(BASE_SIZE * scale), 8)
 	_heading_px = maxi(roundi(heading_size * scale), 12)
 	var advance := _font.get_char_size("M".unicode_at(0), _font_size).x

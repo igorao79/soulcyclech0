@@ -1,5 +1,9 @@
 extends CanvasLayer
 
+# Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
+# не всегда знает новые глобальные классы, и сцена падала при переходе.
+const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
+
 # Автозагрузка PauseMenu: Escape в игре ставит мир на паузу и открывает меню из символов.
 # На главном экране меню не открывается: там своё.
 
@@ -18,8 +22,8 @@ void fragment() {
 """
 
 var _root: Control
-var _menu: SoulcycleAsciiMenu
-var _settings: SoulcycleAsciiMenu
+var _menu: AsciiMenu
+var _settings: AsciiMenu
 
 
 func _ready() -> void:
@@ -40,7 +44,7 @@ func _ready() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
 
-	_menu = SoulcycleAsciiMenu.new()
+	_menu = AsciiMenu.new()
 	_menu.heading = "Пауза"
 	_menu.heading_size = 40.0
 	_menu.columns = 30
@@ -53,7 +57,7 @@ func _ready() -> void:
 	_menu.cancelled.connect(close)
 	_root.add_child(_menu)
 
-	_settings = SoulcycleAsciiMenu.make_settings(get_node("/root/GameSettings"))
+	_settings = AsciiMenu.make_settings(get_node("/root/GameSettings"))
 	_settings.activated.connect(func(_id: StringName) -> void: _back_to_menu())
 	_settings.cancelled.connect(_back_to_menu)
 	_settings.hide()

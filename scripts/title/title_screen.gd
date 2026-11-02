@@ -1,6 +1,11 @@
 class_name SoulcycleTitleScreen
 extends Node
 
+# Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
+# не всегда знает новые глобальные классы, и сцена падала при переходе.
+const UiStyle := preload("res://scripts/ui/ui_style.gd")
+const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
+
 # Главный экран целиком из символов: иллюстрация с двумя героями, заголовок «ЦИКЛ / ДУШ»
 # в две строки, сложенный знаками по форме Cormorant Garamond, и меню моноширинной сеткой.
 
@@ -29,9 +34,9 @@ var screen_material: ShaderMaterial
 var mask_viewport: SubViewport
 var mask_label: Label
 var ui_root: Control
-var menu: SoulcycleAsciiMenu
-var settings_menu: SoulcycleAsciiMenu
-var worlds_menu: SoulcycleAsciiMenu
+var menu: AsciiMenu
+var settings_menu: AsciiMenu
+var worlds_menu: AsciiMenu
 var title_font: Font
 var title_rect := Rect2()
 var music: AudioStreamPlayer
@@ -48,7 +53,7 @@ func _ready() -> void:
 	get_tree().paused = false
 	if _skip_to_game():
 		return
-	title_font = SoulcycleUiStyle.serif(700.0)
+	title_font = UiStyle.serif(700.0)
 	var window := get_window()
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	window.title = "Цикл душ"
@@ -128,7 +133,7 @@ func _build_ui() -> void:
 	ui_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(ui_root)
 
-	menu = SoulcycleAsciiMenu.new()
+	menu = AsciiMenu.new()
 	menu.columns = 36
 	menu.spacing = 2
 	menu.center = Vector2(0.5, MENU_CENTER)
@@ -139,7 +144,7 @@ func _build_ui() -> void:
 	menu.activated.connect(_on_menu)
 	ui_root.add_child(menu)
 
-	settings_menu = SoulcycleAsciiMenu.make_settings(get_node("/root/GameSettings"))
+	settings_menu = AsciiMenu.make_settings(get_node("/root/GameSettings"))
 	settings_menu.center = Vector2(0.5, MENU_CENTER - 0.02)
 	settings_menu.activated.connect(func(_id: StringName) -> void: _close_settings())
 	settings_menu.cancelled.connect(_close_settings)
@@ -147,7 +152,7 @@ func _build_ui() -> void:
 	ui_root.add_child(settings_menu)
 
 	# Прежние сцены отложены сюда, пока сюжет идёт главами.
-	worlds_menu = SoulcycleAsciiMenu.new()
+	worlds_menu = AsciiMenu.new()
 	worlds_menu.heading = "Миры"
 	worlds_menu.heading_size = 24.0
 	worlds_menu.columns = 36
@@ -168,7 +173,7 @@ func _fit() -> void:
 	screen_material.set_shader_parameter("screen_px", screen)
 	mask_viewport.size = Vector2i(screen)
 	# Кегль подбирается так, чтобы высота прописных была заданной долей экрана.
-	var letters := roundi(screen.y * TITLE_CAP / SoulcycleUiStyle.SERIF_CAP)
+	var letters := roundi(screen.y * TITLE_CAP / UiStyle.SERIF_CAP)
 	var tighten := roundi(screen.y * LINE_TIGHTEN)
 	var block := letters * 1.21 * TITLE_LINES.size() - tighten * (TITLE_LINES.size() - 1)
 	mask_label.add_theme_font_size_override("font_size", letters)
