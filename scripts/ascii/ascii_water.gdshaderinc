@@ -227,7 +227,8 @@ void shade_water(vec3 p, vec3 rd, vec2 wc, out vec3 col, out int ramp, out int l
 
 	vec3 hit = p + rd2 * (t + 0.03);
 	float spark = hash21(wc + vec2(31.0, 7.0));
-	bool figure = m >= MAT_COAT && m <= MAT_EYE_DARK && m != MAT_FLOWER && m != MAT_STEM;
+	bool figure = ((m >= MAT_COAT && m <= MAT_EYE_DARK) || (m >= MAT_TROUSER && m <= MAT_FIGURE_LAST))
+		&& m != MAT_FLOWER && m != MAT_STEM;
 
 	if (m == MAT_WRAITH || m == MAT_WRAITH_EYE) {
 		// Эхо: тёмная пустая масса, знаки только по боковой кромке, вода сквозь него не видна.
@@ -245,7 +246,7 @@ void shade_water(vec3 p, vec3 rd, vec2 wc, out vec3 col, out int ramp, out int l
 		}
 	} else if (figure) {
 		// Отражение героя почти силуэт: чёрная дыра в ряби с редкими светлыми точками.
-		bool pale = m == MAT_SHIRT || m == MAT_SKIN || m == MAT_BLADE || m == MAT_HAIR_BLOND || m == MAT_TUNIC;
+		bool pale = m == MAT_SHIRT || m == MAT_SKIN || m == MAT_BUCKLE || m == MAT_HAIR_BLOND || m == MAT_TUNIC;
 		col = WATER_VOID;
 		if (m == MAT_EYE) {
 			ramp = RAMP_MIRROR;

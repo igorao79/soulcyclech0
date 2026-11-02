@@ -58,7 +58,14 @@ func step(delta: float, hero: Vector2, hero_velocity: Vector2, touching: bool) -
 		var bend := _bend[index]
 		var velocity := _velocity[index]
 		velocity += (-bend * STIFFNESS - velocity * DAMPING) * dt
-		bend = (bend + velocity * dt).limit_length(BEND_RANGE)
+		bend += velocity * dt
+		# На пределе изгиба травинка не копит скорость наружу: иначе она залипает и потом хлещет.
+		if bend.length() > BEND_RANGE:
+			var outward := bend.normalized()
+			bend = outward * BEND_RANGE
+			var radial := velocity.dot(outward)
+			if radial > 0.0:
+				velocity -= outward * radial
 		if bend.length() < REST_EPSILON and velocity.length() < REST_EPSILON * 8.0:
 			bend = Vector2.ZERO
 			velocity = Vector2.ZERO

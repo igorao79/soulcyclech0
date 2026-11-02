@@ -26,6 +26,9 @@ const FLOWER := Vector2(58.0, 67.2)
 const PIER_RECT := Vector4(57.2, 52.5, 58.8, 64.6)
 const PIER_TOP := 0.42
 const WADE_DEPTH := 0.26
+# Смотритель стоит на месте и тоже препятствие: сквозь него не пройти.
+const KEEPER_RADIUS := 0.55
+const NORMAL_PROBE := 0.04
 
 # Именно Array[Array]: в Array[PackedVector2Array] внутренний литерал при обходе становится пустым,
 # и тропы молча исчезают из мира.
@@ -56,6 +59,8 @@ var texel_size: Vector2i
 var heights := PackedFloat32Array()
 var prop_grid: Vector2i
 var obstacles: Array[Vector3] = []
+# Препятствия разложены по клеткам сетки реквизита: проверяются только соседние клетки.
+var _obstacle_cells := {}
 var lanterns := PackedVector3Array()
 var map_texture: ImageTexture
 var prop_texture: ImageTexture
@@ -103,14 +108,50 @@ func stand_height(point: Vector2) -> float:
 
 
 func can_stand(point: Vector2) -> bool:
-	if point.x < 2.0 or point.y < 2.0 or point.x > SIZE.x - 2.0 or point.y > SIZE.y - 2.0:
-		return false
-	if not is_on_pier(point) and height_at(point) < -WADE_DEPTH:
-		return false
-	for obstacle in obstacles:
-		if point.distance_squared_to(Vector2(obstacle.x, obstacle.y)) < obstacle.z * obstacle.z:
-			return false
-	return not _inside_structure(point)
+	return clearance(point) >= 0.0
+
+
+# Поле расстояний до всего, что не пускает героя: меньше нуля — точка занята.
+# Глубокая вода входит сюда глубиной, а не расстоянием: для отталкивания хватает знака и уклона.
+func clearance(point: Vector2) -> float:
+	var best := minf(
+		minf(point.x - 2.0, point.y - 2.0),
+		minf(SIZE.x - 2.0 - point.x, SIZE.y - 2.0 - point.y)
+	)
+	if not is_on_pier(point):
+		best = minf(best, height_at(point) + WADE_DEPTH)
+	var cell := Vector2i(floori(point.x / PROP_CELL), floori(point.y / PROP_CELL))
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			for obstacle: Vector3 in _obstacle_cells.get(cell + Vector2i(dx, dz), []):
+				best = minf(best, point.distance_to(Vector2(obstacle.x, obstacle.y)) - obstacle.z)
+	best = minf(best, point.distance_to(KEEPER) - KEEPER_RADIUS)
+	return minf(best, _structure_distance(point))
+
+
+# Направление наружу из препятствия: градиент поля расстояний.
+func clearance_gradient(point: Vector2) -> Vector2:
+	var dx := Vector2(NORMAL_PROBE, 0.0)
+	var dz := Vector2(0.0, NORMAL_PROBE)
+	return Vector2(
+		clearance(point + dx) - clearance(point - dx),
+		clearance(point + dz) - clearance(point - dz)
+	) / (2.0 * NORMAL_PROBE)
+
+
+# Выталкивает точку из препятствия на его границу, как шаг Ньютона по полю расстояний.
+# Если вытолкнуть не удалось (край мостков, острый угол), возвращает исходную точку.
+func push_out(point: Vector2) -> Vector2:
+	var result := point
+	for attempt in range(4):
+		var depth := clearance(result)
+		if depth >= 0.0:
+			return result
+		var gradient := clearance_gradient(result)
+		if gradient.length_squared() < 0.0001:
+			break
+		result += gradient.normalized() * (-depth / maxf(gradient.length(), 0.25) + 0.002)
+	return result if can_stand(result) else point
 
 
 func is_water(point: Vector2) -> bool:
@@ -125,22 +166,23 @@ func surface_at(point: Vector2) -> StringName:
 	return &"snow"
 
 
-func _inside_structure(point: Vector2) -> bool:
-	var chapel := point - CHAPEL
-	if absf(chapel.x) < 1.9 and chapel.y > -2.5 and chapel.y < 2.9:
-		return true
-	var bell := point - BELL
-	if absf(bell.x) < 1.4 and absf(bell.y) < 0.8:
-		return true
-	return _ruin_distance(point) < 0.0
+# Часовня, колокольня и стены руин — прямоугольники со знаковым расстоянием.
+func _structure_distance(point: Vector2) -> float:
+	var best := _box_distance(point - CHAPEL - Vector2(0.0, 0.2), Vector2(1.9, 2.7))
+	best = minf(best, _box_distance(point - BELL, Vector2(1.4, 0.8)))
+	return minf(best, _ruin_distance(point))
 
 
 func _ruin_distance(point: Vector2) -> float:
 	var best := 1000.0
 	for wall in RUIN_WALLS:
-		var nearest := point.clamp(wall.position, wall.end)
-		best = minf(best, point.distance_to(nearest) - (0.0 if nearest != point else 1.0))
+		best = minf(best, _box_distance(point - wall.get_center(), wall.size * 0.5))
 	return best
+
+
+func _box_distance(offset: Vector2, half: Vector2) -> float:
+	var outside := offset.abs() - half
+	return Vector2(maxf(outside.x, 0.0), maxf(outside.y, 0.0)).length() + minf(maxf(outside.x, outside.y), 0.0)
 
 
 func _pond_field(point: Vector2) -> float:
@@ -274,5 +316,9 @@ func _place(kind: int, point: Vector2, scale: float, collision_radius: float) ->
 	var encoded := (offset + Vector2(0.5, 0.5)).clamp(Vector2.ZERO, Vector2.ONE)
 	_prop_image.set_pixelv(cell, Color(kind / 255.0, encoded.x, encoded.y, scale))
 	var center := (Vector2(cell) + Vector2(0.5, 0.5) + (encoded - Vector2(0.5, 0.5)) * PROP_JITTER) * PROP_CELL
-	obstacles.append(Vector3(center.x, center.y, collision_radius))
+	var obstacle := Vector3(center.x, center.y, collision_radius)
+	obstacles.append(obstacle)
+	if not _obstacle_cells.has(cell):
+		_obstacle_cells[cell] = []
+	_obstacle_cells[cell].append(obstacle)
 	return center

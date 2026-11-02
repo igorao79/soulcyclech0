@@ -48,9 +48,10 @@ void fragment() {
 			vec3 emissive;
 			surface_of(mat, p, n, garden, albedo, emissive, ramp);
 			float shadow = moon_shadow(p + n * 0.03);
-			col = albedo * light_at(p, n, rd, shadow) * 1.25 + emissive;
+			vec3 lighting = light_at(p, n, rd, shadow);
+			col = albedo * lighting * 1.25 + emissive;
 			if (ramp == RAMP_FIGURE) {
-				figure_glyph(mat, wc, col, level);
+				figure_glyph(mat, p, wc, dot(lighting, vec3(0.3, 0.55, 0.15)), col, level);
 			} else {
 				if (ramp == RAMP_BODY) {
 					col = pow(col + albedo * 0.12, vec3(0.85));

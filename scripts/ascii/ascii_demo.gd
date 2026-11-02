@@ -5,6 +5,7 @@ const CharacterCatalog := preload("res://scripts/dialogue/character_catalog.gd")
 const DialogueCatalog := preload("res://scripts/dialogue/dialogue_catalog.gd")
 const BELL_WRAITH := preload("res://data/battle/actors/bell_wraith.tres")
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
+const BellSynth := preload("res://scripts/audio/bell_synth.gd")
 const SCENE_SHADER := preload("res://scripts/ascii/ascii_scene.gdshader")
 const FIGURE_SHADER := preload("res://scripts/ascii/ascii_figure_layer.gdshader")
 const GLYPH_SHADER := preload("res://scripts/ascii/ascii_glyph.gdshader")
@@ -46,6 +47,9 @@ const COAT_TRAIL := 0.14
 const COAT_STIFFNESS := 60.0
 const COAT_DAMPING := 7.0
 const COAT_LIMIT := 0.42
+const PHYSICS_STEP := 1.0 / 120.0
+const MAX_FRAME_TIME := 0.05
+const WADE_SPEED := 0.55
 const STEP_BUS := &"AsciiFootsteps"
 const STEP_KICK := 4.5
 const STEP_KICK_RADIUS := 0.6
@@ -327,23 +331,17 @@ func _handle_movement(delta: float, has_control: bool = true) -> void:
 	if has_control:
 		direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
-	var top_speed := WALK_SPEED * (0.6 if world.is_water(player_position) else 1.0)
+	# Рывок кадра не должен проносить героя сквозь препятствие и раскачивать пружины.
+	delta = minf(delta, MAX_FRAME_TIME)
+	# В воде идти тем тяжелее, чем глубже: у кромки почти как по берегу.
+	var depth := 0.0 if world.is_on_pier(player_position) else clampf(
+		-world.height_at(player_position) / SoulcycleAsciiWorld.WADE_DEPTH, 0.0, 1.0
+	)
+	var top_speed := WALK_SPEED * lerpf(1.0, WADE_SPEED, depth)
 	var rate := WALK_ACCEL if direction != Vector2.ZERO else WALK_BRAKE
 	player_velocity = player_velocity.move_toward(direction * top_speed, rate * delta)
-	var step := player_velocity * delta
 	var before := player_position
-
-	# Движение по осям раздельно: упёршись в препятствие, персонаж скользит вдоль него.
-	var moved_x := player_position + Vector2(step.x, 0.0)
-	if world.can_stand(moved_x):
-		player_position = moved_x
-	else:
-		player_velocity.x = 0.0
-	var moved_z := player_position + Vector2(0.0, step.y)
-	if world.can_stand(moved_z):
-		player_position = moved_z
-	else:
-		player_velocity.y = 0.0
+	_move_with_collisions(player_velocity * delta)
 
 	var moved := player_position.distance_to(before)
 	var moving := moved > 0.0001
@@ -360,7 +358,50 @@ func _handle_movement(delta: float, has_control: bool = true) -> void:
 		_track_steps(previous_phase)
 
 
+# Упёршись в камень или ствол, герой обтекает его по касательной, а не залипает.
+# Скорость теряет только ту часть, что направлена в препятствие, поэтому скольжение плавное.
+func _move_with_collisions(step: Vector2) -> void:
+	var length := step.length()
+	if length < 0.00001:
+		return
+	var target := player_position + step
+	if world.can_stand(target):
+		player_position = target
+		return
+
+	var slid := world.push_out(target)
+	var offset := slid - player_position
+	if world.can_stand(slid) and offset.length() <= length * 1.05 + 0.001:
+		# Лобовой упор: точка на границе позади героя, поэтому он просто останавливается.
+		if offset.dot(step) > 0.0:
+			player_position = slid
+		_cancel_velocity_into(world.clearance_gradient(slid))
+		return
+
+	# Запасной путь для острых углов и края мостков: движение по осям раздельно.
+	var moved_x := player_position + Vector2(step.x, 0.0)
+	if world.can_stand(moved_x):
+		player_position = moved_x
+	else:
+		player_velocity.x = 0.0
+	var moved_z := player_position + Vector2(0.0, step.y)
+	if world.can_stand(moved_z):
+		player_position = moved_z
+	else:
+		player_velocity.y = 0.0
+
+
+func _cancel_velocity_into(gradient: Vector2) -> void:
+	if gradient.length_squared() < 0.0001:
+		return
+	var normal := gradient.normalized()
+	var into := player_velocity.dot(normal)
+	if into < 0.0:
+		player_velocity -= normal * into
+
+
 # Наклон корпуса и отставание пальто: пружина перехлёстывает при остановке и повороте.
+# Пружина считается мелкими шагами фиксированной длины: от частоты кадров её поведение не зависит.
 func _update_body_motion(delta: float) -> void:
 	var acceleration := (player_velocity - last_velocity) / maxf(delta, 0.001)
 	last_velocity = player_velocity
@@ -374,9 +415,19 @@ func _update_body_motion(delta: float) -> void:
 	)
 	player_lean = player_lean.lerp(lean_target, 1.0 - exp(-delta * 8.0))
 
-	var coat_force := (-player_velocity * COAT_TRAIL - coat_offset) * COAT_STIFFNESS
-	coat_velocity += (coat_force - coat_velocity * COAT_DAMPING) * delta
-	coat_offset = (coat_offset + coat_velocity * delta).limit_length(COAT_LIMIT)
+	var substeps := maxi(ceili(delta / PHYSICS_STEP), 1)
+	var dt := delta / substeps
+	for substep in range(substeps):
+		var coat_force := (-player_velocity * COAT_TRAIL - coat_offset) * COAT_STIFFNESS
+		coat_velocity += (coat_force - coat_velocity * COAT_DAMPING) * dt
+		coat_offset += coat_velocity * dt
+		# Упёршись в предел, полы не копят скорость наружу, иначе отскок выходит рывком.
+		if coat_offset.length() > COAT_LIMIT:
+			var outward := coat_offset.normalized()
+			coat_offset = outward * COAT_LIMIT
+			var radial := coat_velocity.dot(outward)
+			if radial > 0.0:
+				coat_velocity -= outward * radial
 	coat_lag = Vector2(coat_offset.dot(right), coat_offset.dot(forward))
 
 
@@ -598,7 +649,7 @@ func _build_audio() -> void:
 	music.play()
 
 	bell_player = AudioStreamPlayer.new()
-	bell_player.stream = _synthesize_bell()
+	bell_player.stream = BellSynth.create()
 	bell_player.volume_db = -7.0
 	add_child(bell_player)
 
@@ -642,31 +693,6 @@ func _play_step(is_left: bool) -> void:
 	var pace := clampf(player_velocity.length() / WALK_SPEED, 0.0, 1.0)
 	step_player.volume_db = lerpf(-15.0, -9.0, pace) + random.randf_range(-1.0, 1.0)
 	step_player.play()
-
-
-# Удар колокола собран из негармонических обертонов, как и всё остальное — в коде.
-func _synthesize_bell() -> AudioStreamWAV:
-	const RATE := 22050
-	const PARTIALS := [
-		[110.0, 1.00, 1.1], [220.0, 0.75, 1.5], [264.0, 0.55, 2.2],
-		[331.0, 0.42, 2.8], [442.0, 0.30, 3.6], [587.0, 0.18, 5.0],
-	]
-	var count := RATE * 5
-	var data := PackedByteArray()
-	data.resize(count * 2)
-	for index in range(count):
-		var t := float(index) / RATE
-		var value := 0.0
-		for partial: Array in PARTIALS:
-			value += sin(TAU * partial[0] * t) * partial[1] * exp(-t * partial[2])
-		value *= 0.3 * minf(t * 200.0, 1.0)
-		data.encode_s16(index * 2, int(clampf(value, -1.0, 1.0) * 32000.0))
-
-	var stream := AudioStreamWAV.new()
-	stream.format = AudioStreamWAV.FORMAT_16_BITS
-	stream.mix_rate = RATE
-	stream.data = data
-	return stream
 
 
 func _install_input_actions() -> void:

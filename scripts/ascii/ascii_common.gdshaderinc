@@ -30,10 +30,6 @@ const int MAT_HAIR_DARK = 14;
 const int MAT_HAIR_BLOND = 15;
 const int MAT_TUNIC = 16;
 const int MAT_BOOT = 17;
-const int MAT_BLADE = 18;
-const int MAT_MUG = 19;
-const int MAT_BEER = 20;
-const int MAT_FOAM = 21;
 const int MAT_ROBE = 22;
 const int MAT_CRIMSON = 23;
 const int MAT_EYE = 24;
@@ -42,6 +38,13 @@ const int MAT_WRAITH_EYE = 26;
 const int MAT_FLOWER = 27;
 const int MAT_STEM = 28;
 const int MAT_EYE_DARK = 29;
+const int MAT_TROUSER = 30;
+const int MAT_SHOE = 31;
+const int MAT_STAFF = 32;
+const int MAT_STOLE = 33;
+const int MAT_BUCKLE = 34;
+// Материалы фигур: два диапазона, между ними цветок и стебель.
+const int MAT_FIGURE_LAST = 34;
 
 const int PROP_PINE = 1;
 const int PROP_TREE = 2;

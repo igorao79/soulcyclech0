@@ -65,10 +65,11 @@ void fragment() {
 		vec3 emissive = vec3(0.0);
 		int ramp = RAMP_FIGURE;
 		figure_surface(mat, p, n, albedo, emissive, ramp);
-		vec3 col = albedo * light_at(p, n, rd, moon_shadow(p + n * 0.03)) * 1.25 + emissive;
+		vec3 lighting = light_at(p, n, rd, moon_shadow(p + n * 0.03));
+		vec3 col = albedo * lighting * 1.25 + emissive;
 		int level = 0;
 		if (ramp == RAMP_FIGURE) {
-			figure_glyph(mat, cell, col, level);
+			figure_glyph(mat, p, cell, dot(lighting, vec3(0.3, 0.55, 0.15)), col, level);
 		} else {
 			float lum = dot(col, vec3(0.3, 0.55, 0.15));
 			level = int(clamp(pow(lum, 0.8) * 15.0, 1.0, 15.0));
