@@ -50,6 +50,8 @@ const COAT_LIMIT := 0.42
 const PHYSICS_STEP := 1.0 / 120.0
 const MAX_FRAME_TIME := 0.05
 const WADE_SPEED := 0.55
+# Доля шага, которую сдвиг вдоль препятствия должен пройти вперёд, иначе это упор.
+const SLIDE_MIN_PROGRESS := 0.08
 const STEP_BUS := &"AsciiFootsteps"
 const STEP_KICK := 4.5
 const STEP_KICK_RADIUS := 0.6
@@ -368,13 +370,22 @@ func _move_with_collisions(step: Vector2) -> void:
 	if world.can_stand(target):
 		player_position = target
 		return
+	# Если герой всё же оказался внутри препятствия, наружу его выпускаем.
+	var depth := world.clearance(player_position)
+	if depth < 0.0:
+		if world.clearance(target) > depth:
+			player_position = target
+		return
 
 	var slid := world.push_out(target)
 	var offset := slid - player_position
 	if world.can_stand(slid) and offset.length() <= length * 1.05 + 0.001:
-		# Лобовой упор: точка на границе позади героя, поэтому он просто останавливается.
-		if offset.dot(step) > 0.0:
+		# Лобовой упор или угол между двумя препятствиями: сдвиг почти не ведёт вперёд,
+		# поэтому герой останавливается, а не дёргается от одной стенки к другой.
+		if offset.dot(step) > length * length * SLIDE_MIN_PROGRESS:
 			player_position = slid
+		else:
+			player_velocity = Vector2.ZERO
 		_cancel_velocity_into(world.clearance_gradient(slid))
 		return
 

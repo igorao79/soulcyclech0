@@ -13,6 +13,7 @@ const int RAMP_WATER = 3;
 const int RAMP_MIRROR = 4;
 const int RAMP_RIPPLE = 13;
 const int RAMP_SNOW = 0;
+const float HERO_GHOST = 0.32;
 const int RAMP_PATH = 1;
 
 uniform sampler2D scene_tex : filter_nearest, repeat_disable;
@@ -170,7 +171,8 @@ void fragment() {
 		if (hero.a > 0.0) {
 			vec3 hero_color = figure_pixel(figure_tex, hero_cell, hero_grid, hero_px - vec2(hero_cell) * cell_px);
 			if (int(hero.a * 255.0 + 0.5) >> 4 > RAMP_FIGURE) {
-				result = mix(result, hero_color + vec3(0.05, 0.06, 0.08), 0.8);
+				// Заслонённая часть только просвечивает: камень или куст явно стоят перед героем.
+				result = mix(result, hero_color + vec3(0.05, 0.06, 0.08), HERO_GHOST);
 			} else {
 				result = hero_color;
 				// Только трава перед ногами закрывает героя.

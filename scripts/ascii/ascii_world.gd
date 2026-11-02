@@ -27,7 +27,9 @@ const PIER_RECT := Vector4(57.2, 52.5, 58.8, 64.6)
 const PIER_TOP := 0.42
 const WADE_DEPTH := 0.26
 # Смотритель стоит на месте и тоже препятствие: сквозь него не пройти.
-const KEEPER_RADIUS := 0.55
+# Полуширина героя по полам пальто: препятствие держит его на этом расстоянии от своей кромки.
+const HERO_RADIUS := 0.3
+const KEEPER_RADIUS := 0.31 + HERO_RADIUS
 const NORMAL_PROBE := 0.04
 
 # Именно Array[Array]: в Array[PackedVector2Array] внутренний литерал при обходе становится пустым,
@@ -59,7 +61,7 @@ var texel_size: Vector2i
 var heights := PackedFloat32Array()
 var prop_grid: Vector2i
 var obstacles: Array[Vector3] = []
-# Препятствия разложены по клеткам сетки реквизита: проверяются только соседние клетки.
+# Препятствия разложены по клеткам сетки реквизита, которые они накрывают.
 var _obstacle_cells := {}
 var lanterns := PackedVector3Array()
 var map_texture: ImageTexture
@@ -121,10 +123,8 @@ func clearance(point: Vector2) -> float:
 	if not is_on_pier(point):
 		best = minf(best, height_at(point) + WADE_DEPTH)
 	var cell := Vector2i(floori(point.x / PROP_CELL), floori(point.y / PROP_CELL))
-	for dz in range(-1, 2):
-		for dx in range(-1, 2):
-			for obstacle: Vector3 in _obstacle_cells.get(cell + Vector2i(dx, dz), []):
-				best = minf(best, point.distance_to(Vector2(obstacle.x, obstacle.y)) - obstacle.z)
+	for obstacle: Vector3 in _obstacle_cells.get(cell, []):
+		best = minf(best, point.distance_to(Vector2(obstacle.x, obstacle.y)) - obstacle.z)
 	best = minf(best, point.distance_to(KEEPER) - KEEPER_RADIUS)
 	return minf(best, _structure_distance(point))
 
@@ -244,7 +244,7 @@ func _build_props() -> void:
 		Vector2(85.0, 24.5), Vector2(46.5, 31.5), Vector2(60.8, 44.0),
 		Vector2(55.4, 51.0), Vector2(60.8, 51.0),
 	]:
-		var placed := _place(PROP_LANTERN, lantern_point, 0.5, 0.28)
+		var placed := _place(PROP_LANTERN, lantern_point, 0.5)
 		# Источник поднят над головой фонаря: пятно света слабее и не выжигает снег.
 		lanterns.append(Vector3(placed.x, 2.7, placed.y))
 
@@ -255,18 +255,18 @@ func _build_props() -> void:
 	for grave_point: Vector2 in [
 		Vector2(35.0, 30.0), Vector2(38.1, 36.3), Vector2(41.4, 30.5), Vector2(32.0, 36.0),
 	]:
-		_place(PROP_GRAVE, grave_point, 0.5, 0.45)
-	_place(PROP_ROCK, Vector2(66.5, 37.0), 0.6, 0.65)
-	_place(PROP_STUMP, Vector2(52.2, 36.8), 0.5, 0.4)
-	_place(PROP_ROCK, Vector2(79.0, 30.0), 0.2, 0.55)
+		_place(PROP_GRAVE, grave_point, 0.5)
+	_place(PROP_ROCK, Vector2(66.5, 37.0), 0.6)
+	_place(PROP_STUMP, Vector2(52.2, 36.8), 0.5)
+	_place(PROP_ROCK, Vector2(79.0, 30.0), 0.2)
 	# Обломки у подножия руин.
-	_place(PROP_ROCK, Vector2(49.5, 47.5), 0.9, 0.65)
-	_place(PROP_ROCK, Vector2(43.5, 47.5), 0.5, 0.55)
-	_place(PROP_ROCK, Vector2(73.5, 47.5), 0.8, 0.6)
+	_place(PROP_ROCK, Vector2(49.5, 47.5), 0.9)
+	_place(PROP_ROCK, Vector2(43.5, 47.5), 0.5)
+	_place(PROP_ROCK, Vector2(73.5, 47.5), 0.8)
 
 	for boulder in BOULDERS:
 		var scale := clampf((boulder.z - 1.1) / 1.7, 0.0, 1.0)
-		_place(PROP_BOULDER, Vector2(boulder.x, boulder.y), scale, boulder.z * 0.9)
+		_place(PROP_BOULDER, Vector2(boulder.x, boulder.y), scale)
 
 	for cell_y in range(prop_grid.y):
 		for cell_x in range(prop_grid.x):
@@ -297,20 +297,21 @@ func _try_forest(cell: Vector2i) -> void:
 	if garden > 0.5:
 		var roll := _random.randf()
 		if roll < 0.28:
-			_place(PROP_TREE, point, scale, 0.42)
+			_place(PROP_TREE, point, scale)
 		elif roll < 0.50:
-			_place(PROP_PINE, point, scale * 0.6, 0.45)
+			_place(PROP_PINE, point, scale * 0.6)
 		elif roll < 0.74:
-			_place(PROP_BUSH, point, scale, 0.65)
+			_place(PROP_BUSH, point, scale)
 	else:
 		var density := 0.74 + _noise.get_noise_2dv(point * 0.6) * 0.5
 		if keep_out > 7.0:
 			density = 1.0
 		if _random.randf() < density:
-			_place(PROP_PINE, point, scale, 0.45)
+			_place(PROP_PINE, point, scale)
 
 
-func _place(kind: int, point: Vector2, scale: float, collision_radius: float) -> Vector2:
+func _place(kind: int, point: Vector2, scale: float) -> Vector2:
+	var collision_radius := _collision_radius(kind, scale)
 	var cell := Vector2i(floori(point.x / PROP_CELL), floori(point.y / PROP_CELL))
 	var offset := (point / PROP_CELL - Vector2(cell) - Vector2(0.5, 0.5)) / PROP_JITTER
 	var encoded := (offset + Vector2(0.5, 0.5)).clamp(Vector2.ZERO, Vector2.ONE)
@@ -318,7 +319,39 @@ func _place(kind: int, point: Vector2, scale: float, collision_radius: float) ->
 	var center := (Vector2(cell) + Vector2(0.5, 0.5) + (encoded - Vector2(0.5, 0.5)) * PROP_JITTER) * PROP_CELL
 	var obstacle := Vector3(center.x, center.y, collision_radius)
 	obstacles.append(obstacle)
-	if not _obstacle_cells.has(cell):
-		_obstacle_cells[cell] = []
-	_obstacle_cells[cell].append(obstacle)
+	# Препятствие записано во все клетки, которые накрывает: проверка смотрит только свою клетку.
+	var low := Vector2i(((center - Vector2.ONE * collision_radius) / PROP_CELL).floor())
+	var high := Vector2i(((center + Vector2.ONE * collision_radius) / PROP_CELL).floor())
+	for z in range(low.y, high.y + 1):
+		for x in range(low.x, high.x + 1):
+			var key := Vector2i(x, z)
+			if not _obstacle_cells.has(key):
+				_obstacle_cells[key] = []
+			_obstacle_cells[key].append(obstacle)
 	return center
+
+
+# Радиус столкновения повторяет размеры из sd_props в ascii_props.gdshaderinc
+# и добавляет полуширину героя: так фигура не заходит в предмет, а встаёт вплотную.
+func _collision_radius(kind: int, scale: float) -> float:
+	match kind:
+		PROP_BOULDER:
+			# Валун шире всего на высоте пояса, неровности выпирают ещё на ~0.2.
+			return 1.1 + scale * 1.7 + 0.15 + HERO_RADIUS
+		PROP_ROCK:
+			return 0.5 + scale * 0.4 + 0.1 + HERO_RADIUS
+		PROP_BUSH:
+			# Куст мягкий: полы пальто чуть заходят в листву.
+			return 0.72 + scale * 0.3 + HERO_RADIUS * 0.5
+		PROP_PINE:
+			# Нижний ярус хвои висит на высоте груди.
+			return (1.0 + scale * 0.45) * 0.55 + HERO_RADIUS
+		PROP_TREE:
+			return 0.13 + HERO_RADIUS
+		PROP_LANTERN:
+			return 0.05 + HERO_RADIUS
+		PROP_GRAVE:
+			return 0.42 + HERO_RADIUS * 0.6
+		PROP_STUMP:
+			return 0.32 + HERO_RADIUS
+	return HERO_RADIUS
