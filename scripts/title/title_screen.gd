@@ -10,6 +10,7 @@ const SCREEN_SHADER := preload("res://scripts/title/title_screen.gdshader")
 const ART := preload("res://assets/title/duo_moon.jpg")
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
 
+const CHAPTER_SCENE := "res://scenes/chapter_one.tscn"
 const ASCII_SCENE := "res://scenes/ascii_demo.tscn"
 const MAIN_SCENE := "res://scenes/main.tscn"
 const TITLE_LINES: Array[String] = ["ЦИКЛ", "ДУШ"]
@@ -30,6 +31,7 @@ var mask_label: Label
 var ui_root: Control
 var menu: SoulcycleAsciiMenu
 var settings_menu: SoulcycleAsciiMenu
+var worlds_menu: SoulcycleAsciiMenu
 var title_font: Font
 var title_rect := Rect2()
 var music: AudioStreamPlayer
@@ -130,8 +132,8 @@ func _build_ui() -> void:
 	menu.columns = 36
 	menu.spacing = 2
 	menu.center = Vector2(0.5, MENU_CENTER)
-	menu.add_button(&"ascii", "Начать путь")
-	menu.add_button(&"winter", "Зимний перекрёсток")
+	menu.add_button(&"chapter", "Начать путь")
+	menu.add_button(&"worlds", "Миры")
 	menu.add_button(&"settings", "Настройки")
 	menu.add_button(&"quit", "Выход")
 	menu.activated.connect(_on_menu)
@@ -143,6 +145,21 @@ func _build_ui() -> void:
 	settings_menu.cancelled.connect(_close_settings)
 	settings_menu.hide()
 	ui_root.add_child(settings_menu)
+
+	# Прежние сцены отложены сюда, пока сюжет идёт главами.
+	worlds_menu = SoulcycleAsciiMenu.new()
+	worlds_menu.heading = "Миры"
+	worlds_menu.heading_size = 24.0
+	worlds_menu.columns = 36
+	worlds_menu.spacing = 2
+	worlds_menu.center = Vector2(0.5, MENU_CENTER - 0.02)
+	worlds_menu.add_button(&"ascii", "Ночь символов")
+	worlds_menu.add_button(&"winter", "Зимний перекрёсток")
+	worlds_menu.add_button(&"back", "Назад")
+	worlds_menu.activated.connect(_on_worlds)
+	worlds_menu.cancelled.connect(_close_worlds)
+	worlds_menu.hide()
+	ui_root.add_child(worlds_menu)
 	menu.open()
 
 
@@ -172,7 +189,11 @@ func _fit() -> void:
 # Картина притушена под заголовком и меню, чтобы символы текста не тонули в символах картины.
 func _update_calm_rect() -> void:
 	var title_area := title_rect.grow(title_rect.size.y * 0.25)
-	var active := settings_menu if settings_menu.visible else menu
+	var active := menu
+	if settings_menu.visible:
+		active = settings_menu
+	elif worlds_menu.visible:
+		active = worlds_menu
 	var area := title_area.merge(active.box_rect().grow(8.0))
 	screen_material.set_shader_parameter("calm_rect", Vector4(area.position.x, area.position.y, area.size.x, area.size.y))
 
@@ -181,7 +202,9 @@ func _update_calm_rect() -> void:
 func _skip_to_game() -> bool:
 	var args := OS.get_cmdline_user_args()
 	var target := ""
-	if "--ascii" in args:
+	if "--chapter" in args:
+		target = CHAPTER_SCENE
+	elif "--ascii" in args:
 		target = ASCII_SCENE
 	elif "--main" in args or "--dialogue-preview" in args or "--battle-preview" in args or "--travel-preview" in args:
 		target = MAIN_SCENE
@@ -194,15 +217,33 @@ func _skip_to_game() -> bool:
 
 func _on_menu(id: StringName) -> void:
 	match id:
-		&"ascii":
-			_start(ASCII_SCENE)
-		&"winter":
-			_start(MAIN_SCENE)
+		&"chapter":
+			_start(CHAPTER_SCENE)
+		&"worlds":
+			menu.hide()
+			worlds_menu.open()
 		&"settings":
 			menu.hide()
 			settings_menu.open()
 		&"quit":
 			get_tree().quit()
+
+
+func _on_worlds(id: StringName) -> void:
+	match id:
+		&"ascii":
+			worlds_menu.hide()
+			_start(ASCII_SCENE)
+		&"winter":
+			worlds_menu.hide()
+			_start(MAIN_SCENE)
+		_:
+			_close_worlds()
+
+
+func _close_worlds() -> void:
+	worlds_menu.hide()
+	menu.open()
 
 
 func _close_settings() -> void:

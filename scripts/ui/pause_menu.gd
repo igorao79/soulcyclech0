@@ -4,7 +4,9 @@ extends CanvasLayer
 # На главном экране меню не открывается: там своё.
 
 const TITLE_SCENE := "res://scenes/title.tscn"
-const GAMEPLAY_SCENES: Array[String] = ["res://scenes/main.tscn", "res://scenes/ascii_demo.tscn"]
+const GAMEPLAY_SCENES: Array[String] = [
+	"res://scenes/chapter_one.tscn", "res://scenes/main.tscn", "res://scenes/ascii_demo.tscn",
+]
 const VEIL_SHADER := """
 shader_type canvas_item;
 

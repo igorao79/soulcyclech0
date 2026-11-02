@@ -583,7 +583,6 @@ func _update_camera() -> void:
 
 
 func _update_hud() -> void:
-	hud.title_alpha = clampf(1.0 - (elapsed - 3.5) * 0.5, 0.0, 1.0)
 	hud.notice_alpha = minf(notice_timer, 1.0)
 	hud.tags.clear()
 

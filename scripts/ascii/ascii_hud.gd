@@ -8,8 +8,6 @@ var font_size := 14
 var cell := Vector2i(8, 16)
 var grid := Vector2i(160, 45)
 
-var hint_text := "WASD ходить   E действие   1/2 персонаж   ESC меню"
-var title_alpha := 1.0
 var tags: Array[Dictionary] = []
 var dialogue_speaker := ""
 var dialogue_color := Color.WHITE
@@ -27,13 +25,6 @@ func _ready() -> void:
 func _draw() -> void:
 	for tag in tags:
 		_text_centered(tag["col"], tag["row"], tag["text"], tag["color"], true, tag["shift"])
-
-	_text_centered(grid.x / 2, grid.y - 2, hint_text, Color(0.60, 0.66, 0.78, 0.85), true)
-
-	if title_alpha > 0.0:
-		var title_color := Color(0.88, 0.92, 1.0, title_alpha)
-		_text_centered(grid.x / 2, 3, "S O U L C Y C L E", title_color, true)
-		_text_centered(grid.x / 2, 4, "ночь, нарисованная символами", Color(0.56, 0.66, 0.84, title_alpha), true)
 
 	if notice_alpha > 0.0:
 		var notice_color := Color(0.92, 0.34, 0.40, notice_alpha)

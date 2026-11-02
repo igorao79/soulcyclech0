@@ -76,6 +76,8 @@ uniform vec3 player_pos = vec3(0.0);
 uniform float player_yaw = 0.0;
 uniform float player_phase = 0.0;
 uniform float player_move = 0.0;
+// 0 — стоит, 1 — сидит на земле, обхватив колени. Пока только у Безымянного.
+uniform float player_sit = 0.0;
 uniform vec2 player_lean = vec2(0.0);
 uniform vec2 coat_lag = vec2(0.0);
 uniform int player_style = 0;

@@ -6,6 +6,9 @@ const int RAMP_FIGURE = 14;
 // STEP_LENGTH в ascii_demo.gd = GAIT_REACH * FIGURE_SCALE / GAIT_STANCE.
 const float GAIT_STANCE = 0.55;
 const float GAIT_REACH = 0.52;
+// Сидя таз опускается с 0.90 до этой высоты; на столько же опускается весь корпус.
+const float SIT_DROP_HIP = 0.24;
+const float SIT_DROP = 0.66;
 
 // Номера знаков в ряду 14 атласа: " .:'-~=|+*os%#@8".
 const int FG_NONE = 0;
@@ -36,12 +39,16 @@ vec3 gait_foot(float phase) {
 }
 
 
-void sd_leg(vec3 q, float side, float phase, float amount, float bob, int trouser, int shin, int shoe, inout float d, inout int m) {
+void sd_leg(vec3 q, float side, float phase, float amount, float bob, float sit, int trouser, int shin, int shoe, inout float d, inout int m) {
 	vec3 pose = gait_foot(phase) * amount;
 	vec3 hip = vec3(side * 0.11, 0.90 + bob, 0.0);
 	vec3 foot = vec3(side * 0.12, 0.09 + pose.y, pose.x);
 	// Колено сгибается только в переносе: опорная нога почти прямая.
 	vec3 knee = mix(hip, foot, 0.5) + vec3(0.0, 0.0, 0.03 + pose.y * 0.7);
+	// Сидя: таз на земле, колени подтянуты к груди, стопы впереди.
+	hip = mix(hip, vec3(side * 0.12, SIT_DROP_HIP, -0.06), sit);
+	knee = mix(knee, vec3(side * 0.14, 0.60, 0.40), sit);
+	foot = mix(foot, vec3(side * 0.13, 0.09, 0.62), sit);
 	take(d, m, sd_capsule(q, hip, knee, 0.085), trouser);
 	take(d, m, sd_capsule(q, knee, foot, 0.072), shin);
 	take(d, m, sd_capsule(q, foot, foot + vec3(0.0, -0.02 + pose.z, 0.15), 0.072), shoe);
@@ -98,8 +105,12 @@ bool eyes_open(float seed) {
 void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) {
 	float bob;
 	float swing = apply_body_motion(q, phase, amount, bob);
-	sd_leg(q, -1.0, phase, amount, bob, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
-	sd_leg(q, 1.0, phase + PI, amount, bob, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	float sit = player_sit;
+	sd_leg(q, -1.0, phase, amount, bob, sit, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	sd_leg(q, 1.0, phase + PI, amount, bob, sit, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	// Сидя корпус опускается к земле и клонится вперёд, к коленям.
+	q.y += SIT_DROP * sit;
+	q.z -= sit * 0.22 * max(q.y - 0.9, 0.0);
 	twist_upper_body(q, phase, amount, bob);
 	vec2 wind = local_wind();
 
@@ -127,6 +138,9 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 	// Широкие рукава с отворотом: кисть бледная и заметная.
 	vec3 hand_l = vec3(-0.31, 0.74 + abs(swing) * 0.04, -swing * 0.30);
 	vec3 hand_r = vec3(0.31, 0.74 + abs(swing) * 0.04, swing * 0.30);
+	// Сидя руки лежат на коленях.
+	hand_l = mix(hand_l, vec3(-0.19, 1.22, 0.44), sit);
+	hand_r = mix(hand_r, vec3(0.19, 1.22, 0.44), sit);
 	take(d, m, sd_capsule(q, vec3(-0.235, 1.26, 0.0), hand_l + vec3(0.0, 0.08, 0.0), 0.095), MAT_COAT);
 	take(d, m, sd_capsule(q, vec3(0.235, 1.26, 0.0), hand_r + vec3(0.0, 0.08, 0.0), 0.095), MAT_COAT);
 	take(d, m, sd_capsule(q, hand_l + vec3(0.0, 0.09, 0.0), hand_l + vec3(0.0, 0.15, 0.0), 0.112), MAT_COAT);
@@ -159,8 +173,8 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 void sd_wanderer(vec3 q, float phase, float amount, inout float d, inout int m) {
 	float bob;
 	float swing = apply_body_motion(q, phase, amount, bob);
-	sd_leg(q, -1.0, phase, amount, bob, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
-	sd_leg(q, 1.0, phase + PI, amount, bob, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
+	sd_leg(q, -1.0, phase, amount, bob, 0.0, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
+	sd_leg(q, 1.0, phase + PI, amount, bob, 0.0, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
 	twist_upper_body(q, phase, amount, bob);
 	vec2 wind = local_wind();
 
