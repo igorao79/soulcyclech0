@@ -7,7 +7,9 @@ const BattleSystemScene := preload("res://scripts/battle/battle_system.gd")
 const WinterMapScene := preload("res://scripts/winter_map.gd")
 const TravelTransitionScene := preload("res://scripts/transitions/travel_transition.gd")
 const CHAPEL_TEXTURE := preload("res://assets/props/chapel.png")
+# Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const WINTER_THEME := preload("res://assets/music/snowbound_crossroads.ogg")
+const WINTER_LOOP_START := 4 * 3 * 60.0 / 88.0
 
 var current_location := &"crossroads"
 var winter_map: SoulcycleWinterMap
@@ -228,6 +230,7 @@ func _build_lighting() -> void:
 func _build_music() -> void:
 	var looped_theme := WINTER_THEME.duplicate() as AudioStreamOggVorbis
 	looped_theme.loop = true
+	looped_theme.loop_offset = WINTER_LOOP_START
 
 	music = AudioStreamPlayer.new()
 	music.name = "WinterTheme"

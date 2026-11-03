@@ -14,7 +14,9 @@ const BellSynth := preload("res://scripts/audio/bell_synth.gd")
 const SCENE_SHADER := preload("res://scripts/ascii/ascii_scene.gdshader")
 const FIGURE_SHADER := preload("res://scripts/ascii/ascii_figure_layer.gdshader")
 const GLYPH_SHADER := preload("res://scripts/ascii/ascii_glyph.gdshader")
+# Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const WINTER_THEME := preload("res://assets/music/snowbound_crossroads.ogg")
+const WINTER_LOOP_START := 4 * 3 * 60.0 / 88.0
 const FOOTSTEPS := {
 	&"snow": [
 		preload("res://assets/audio/footsteps/snow_01.wav"),
@@ -662,6 +664,7 @@ func _ground_point(point: Vector2) -> Vector3:
 func _build_audio() -> void:
 	var looped_theme := WINTER_THEME.duplicate() as AudioStreamOggVorbis
 	looped_theme.loop = true
+	looped_theme.loop_offset = WINTER_LOOP_START
 	music = AudioStreamPlayer.new()
 	music.stream = looped_theme
 	music.volume_db = -20.0

@@ -19,7 +19,9 @@ const AsciiDemo := preload("res://scripts/ascii/ascii_demo.gd")
 const LibraryScene := preload("res://scripts/chapter/library_scene.gd")
 const SaveBook := preload("res://scripts/save/save_book.gd")
 const SCREEN_SHADER := preload("res://scripts/chapter/chapter_one.gdshader")
+# Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
+const THEME_LOOP_START := 4 * 3 * 60.0 / 88.0
 const TITLE_SCENE := "res://scenes/title.tscn"
 
 const BASE_FONT_SIZE := 8
@@ -333,6 +335,7 @@ func _draw_rule(mid: Vector2, reach: float, scale: float, alpha: float) -> void:
 func _build_audio() -> void:
 	var looped := THEME_MUSIC.duplicate() as AudioStreamOggVorbis
 	looped.loop = true
+	looped.loop_offset = THEME_LOOP_START
 	music = AudioStreamPlayer.new()
 	music.stream = looped
 	music.bus = &"Music"
