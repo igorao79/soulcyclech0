@@ -8,12 +8,15 @@
   A2 (8 тактов)  — та же тема, шкатулка отвечает ей подголоском.
   B  (8 тактов)  — светлая середина: мягкий квадратный лид на октаву выше.
   A3 (8 тактов)  — кульминация: тема у флейты и лида вместе, струнные шире.
+  R  (4 такта)   — передышка: снова вступление, шкатулка и струнные без мелодии.
 
 Всё плавное, как вступление: ни ударных, ни отрывистого баса, ни звонких ударных нот —
 мелодию ведёт тянущийся голос без удара в начале, аккорды тихо перебирает шкатулка.
 
-Петля — с начала A до конца A3; вступление звучит один раз. Хвост реверберации с конца петли
-перенесён в её начало, поэтому стык не слышен. В Godot петля начинается с LOOP_START секунд.
+Петля — с начала A до конца R. Перед темой всегда звучит одно и то же (вступление или R,
+сыгранные одинаково до сэмпла), поэтому хвосты нот и реверберации в начале темы одинаковы
+и после вступления, и после круга петли: ни на 11-й секунде, ни на стыке петли нет скачка.
+В Godot петля начинается с LOOP_START секунд.
 
 Запуск: python3 tools/compose_menu_theme.py  → assets/music/menu_theme.ogg (нужны numpy и ffmpeg).
 """
@@ -29,7 +32,7 @@ BPM = 84.0
 BEAT = 60.0 / BPM
 BAR = BEAT * 4
 INTRO_BARS = 4
-LOOP_BARS = 32
+LOOP_BARS = 36
 LOOP_START = INTRO_BARS * BAR
 rng = np.random.default_rng(1993)
 
@@ -194,9 +197,11 @@ def place_melody(track, bars, start_bar, voice, octave_shift=0, gain=1.0, pan=0.
 
 
 # figure — громкость шкатулки: под мелодией тише, в одиночку громче.
-def place_harmony(track, chords, start_bar, figure, gain=1.0):
+# ramp_from — с какой громкости шкатулка плавно сходит к figure за первые два такта.
+def place_harmony(track, chords, start_bar, figure, gain=1.0, ramp_from=None):
     for b, (_, tones) in enumerate(chords):
         at = (start_bar + b) * BAR
+        box = figure if ramp_from is None else ramp_from + (figure - ramp_from) * min((b + 0.5) / 2.0, 1.0)
         root = freq(tones[0])
         track.add(warm_bass(root, BAR), at, 0.9 * gain, -0.05)
         for tone in tones[1:]:
@@ -204,13 +209,24 @@ def place_harmony(track, chords, start_bar, figure, gain=1.0):
         # Шкатулка перебирает аккорд на две октавы выше, как во вступлении.
         order = [1, 2, 3, 2, 3, 1, 2, 3]
         for i, idx in enumerate(order):
-            track.add(music_box(freq(tones[idx]) * 4, BEAT * 0.5), at + i * BEAT * 0.5, figure * gain, 0.35)
+            track.add(music_box(freq(tones[idx]) * 4, BEAT * 0.5), at + i * BEAT * 0.5, box * gain, 0.35)
+
+
+INTRO_BOX = 0.7
+
+
+def place_intro(track, at_bar):
+    """Шкатулка и струнные без мелодии. Звучит в начале и ещё раз в конце петли: перед темой
+    всегда одно и то же, поэтому её начало одинаково и после вступления, и после круга петли."""
+    global rng
+    rng = np.random.default_rng(77)
+    place_harmony(track, THEME_CHORDS[:4], at_bar, INTRO_BOX, 0.85)
 
 
 def compose():
     total_bars = INTRO_BARS + LOOP_BARS * 2
     track = Track(total_bars * BAR)
-    place_harmony(track, THEME_CHORDS[:4], 0, 0.7, 0.85)
+    place_intro(track, 0)
     global rng
     for cycle in range(2):
         # Оба прохода петли играются одинаково до сэмпла: тогда хвосты нот с конца петли
@@ -219,7 +235,7 @@ def compose():
         base = INTRO_BARS + cycle * LOOP_BARS
         # A: тема у флейты.
         # Тема входит тихо, сразу за вступлением, без скачка громкости; дальше всё нарастает.
-        place_harmony(track, THEME_CHORDS, base, 0.32, 0.85)
+        place_harmony(track, THEME_CHORDS, base, 0.32, 0.85, ramp_from=INTRO_BOX)
         place_melody(track, THEME, base, flute, gain=0.85, pan=0.1)
         # A2: та же тема, шкатулка отвечает подголоском.
         place_harmony(track, THEME_CHORDS, base + 8, 0.28, 0.95)
@@ -233,6 +249,8 @@ def compose():
         place_melody(track, THEME, base + 24, flute, gain=1.2, pan=0.1)
         place_melody(track, THEME, base + 24, pulse_lead, octave_shift=1, gain=0.35, pan=-0.2)
         place_melody(track, COUNTER, base + 24, music_box, gain=0.6, pan=0.45)
+        # Передышка после кульминации — снова вступление, и круг начинается с темы.
+        place_intro(track, base + 32)
     return track
 
 
