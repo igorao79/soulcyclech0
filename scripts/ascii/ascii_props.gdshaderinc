@@ -1,7 +1,15 @@
 // Окружение: деревья, камни, руины, часовня, колокол, мостик, цветок и их материалы.
 const int PROP_BOULDER = 8;
+const int PROP_HOUSE = 9;
 const int MAT_RUIN = 40;
 const int MAT_BELL = 41;
+const int MAT_HOUSE = 42;
+
+// Каменный домик городка: полуширина, полуглубина, высота стен и конька. Те же числа в ascii_world.gd.
+const vec2 HOUSE_HALF = vec2(2.1, 1.5);
+const float HOUSE_EAVE = 2.3;
+const float HOUSE_RIDGE = 4.4;
+const float HOUSE_OVERHANG = 0.22;
 
 const float PINE_TIER = 1.0;
 // Высота одного ряда знаков на вертикальной стене и на горизонтальном настиле.
@@ -101,6 +109,31 @@ void sd_ruin(vec3 p, inout float d, inout int m) {
 }
 
 
+// Домик: стены из камня на цоколе, двускатная крыша коньком вдоль x, труба.
+// q — от центра у земли; variant 0..1 — ширина и сторона трубы.
+float sd_house(vec3 q, float variant, inout int m) {
+	float width = mix(0.86, 1.12, fract(variant * 7.3));
+	vec2 half_size = HOUSE_HALF * vec2(width, 1.0);
+	float d = 1000.0;
+	int local_m = MAT_HOUSE;
+	// Цоколь уходит в землю: на склоне дом не повисает над снегом.
+	take(d, local_m, sd_box(q - vec3(0.0, HOUSE_EAVE * 0.5 - 0.5, 0.0), vec3(half_size.x, HOUSE_EAVE * 0.5 + 0.5, half_size.y)), MAT_HOUSE);
+	// Скат: высота над карнизом падает к краям; щипцы стен закрывают торцы.
+	float slope = (HOUSE_RIDGE - HOUSE_EAVE) / (half_size.y + HOUSE_OVERHANG);
+	float pitch = (q.y + abs(q.z) * slope - HOUSE_RIDGE) / sqrt(1.0 + slope * slope);
+	float gable = max(max(pitch + 0.08, abs(q.x) - half_size.x), max(abs(q.z) - half_size.y, HOUSE_EAVE - 0.05 - q.y));
+	take(d, local_m, gable, MAT_HOUSE);
+	float roof = max(max(pitch, -pitch - 0.16), max(abs(q.x) - half_size.x - HOUSE_OVERHANG, HOUSE_EAVE - 0.12 - q.y));
+	take(d, local_m, roof, MAT_ROOF);
+	float side = fract(variant * 3.1) > 0.5 ? 1.0 : -1.0;
+	take(d, local_m, sd_box(q - vec3(side * half_size.x * 0.62, HOUSE_RIDGE - 0.1, -0.35), vec3(0.24, 0.62, 0.24)), MAT_HOUSE);
+	// Ступень у двери.
+	take(d, local_m, sd_box(q - vec3(-half_size.x * 0.18, 0.06, half_size.y + 0.22), vec3(0.45, 0.08, 0.22)), MAT_STONE);
+	m = local_m;
+	return d;
+}
+
+
 float sd_props(vec3 p, inout int m) {
 	if (p.y > 6.5) {
 		return p.y - 6.0;
@@ -171,6 +204,13 @@ float sd_props(vec3 p, inout int m) {
 			} else if (kind == PROP_STUMP) {
 				nd = max(r - 0.32, q.y - 0.55);
 				nm = MAT_WOOD;
+			} else if (kind == PROP_HOUSE) {
+				if (r > 3.4) {
+					nd = r - 3.0;
+				} else {
+					q.y -= textureLod(world_map, center / world_size, 0.0).r - 0.12;
+					nd = sd_house(q, e.a, nm);
+				}
 			}
 			take(d, m, nd, nm);
 		}
@@ -307,6 +347,35 @@ vec3 wall_stone(vec3 p, vec3 n, vec2 block) {
 }
 
 
+// Ближайший домик к точке: центр (xz), высота земли под ним и вариант. false — рядом нет.
+bool house_near(vec2 xz, out vec2 center, out float base, out float variant) {
+	ivec2 grid = textureSize(prop_map, 0);
+	ivec2 cell0 = ivec2(floor(xz / PROP_CELL));
+	float best = 1000.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			ivec2 c = cell0 + ivec2(i, j);
+			if (c.x < 0 || c.y < 0 || c.x >= grid.x || c.y >= grid.y) {
+				continue;
+			}
+			vec4 e = texelFetch(prop_map, c, 0);
+			if (int(e.r * 255.0 + 0.5) != PROP_HOUSE) {
+				continue;
+			}
+			vec2 at = (vec2(c) + vec2(0.5) + (e.gb - vec2(0.5)) * PROP_JITTER) * PROP_CELL;
+			float dist = length(at - xz);
+			if (dist < best) {
+				best = dist;
+				center = at;
+				variant = e.a;
+			}
+		}
+	}
+	base = best < 1000.0 ? textureLod(world_map, center / world_size, 0.0).r - 0.12 : 0.0;
+	return best < 1000.0;
+}
+
+
 // Окно с полукруглым верхом и переплётом. dx, dy — от центра окна, половины ширины и высоты.
 bool arched(float dx, float dy, float half_w, float half_h) {
 	return abs(dx) < half_w && length(vec2(dx, max(dy - (half_h - half_w), 0.0))) < half_w && dy > -half_h;
@@ -404,6 +473,41 @@ void environment_surface(int mat, vec3 p, vec3 n, inout vec3 albedo, inout vec3 
 				ramp = RAMP_GLOW;
 			}
 		}
+	} else if (mat == MAT_HOUSE) {
+		albedo = wall_stone(p, n, vec2(0.62, WALL_ROW * 3.0)) * vec3(0.95, 0.92, 0.88);
+		vec2 center;
+		float base;
+		float variant;
+		if (house_near(p.xz, center, base, variant)) {
+			vec3 q = vec3(p.x - center.x, p.y - base, p.z - center.y);
+			float half_x = HOUSE_HALF.x * mix(0.86, 1.12, fract(variant * 7.3));
+			bool facade = n.z > 0.7 && q.z > HOUSE_HALF.y - 0.1;
+			// Два окна по бокам от двери; в части домов уже погашен свет.
+			bool lit = fract(variant * 13.7) > 0.3;
+			float window_x = abs(q.x + half_x * 0.18) - half_x * 0.55;
+			bool window = facade && abs(window_x) < 0.36 && abs(q.y - 1.35) < 0.42;
+			bool door = facade && abs(q.x + half_x * 0.18) < 0.4 && q.y < 1.75 && q.y > 0.12;
+			if (window) {
+				// Переплёт крестом и деревянная рама.
+				bool frame = abs(window_x) > 0.29 || abs(q.y - 1.35) > 0.35;
+				bool bars = abs(window_x) < 0.04 || abs(q.y - 1.35) < 0.05;
+				if (frame) {
+					albedo = vec3(0.22, 0.15, 0.10);
+				} else if (lit) {
+					emissive = vec3(1.0, 0.66, 0.28) * (bars ? 0.22 : 0.78 + 0.25 * value_noise(p.xy * 3.0 + time * 0.3));
+					albedo = vec3(0.05);
+					ramp = RAMP_GLOW;
+				} else {
+					albedo = vec3(0.04, 0.05, 0.08) * (bars ? 3.0 : 1.0);
+				}
+			} else if (door) {
+				// Доски двери, кованая ручка.
+				albedo = vec3(0.24, 0.15, 0.09) * (abs(fract(q.x * 3.4) - 0.5) < 0.1 ? 0.35 : 1.0);
+				if (length(vec2(q.x + half_x * 0.18 - 0.26, q.y - 0.9)) < 0.06) {
+					albedo = vec3(0.55, 0.48, 0.36);
+				}
+			}
+		}
 	} else if (mat == MAT_ROOF) {
 		vec3 q = (p - chapel_pos) / CHAPEL_SCALE;
 		if (n.z > 0.7 && q.z < 4.0) {
@@ -414,6 +518,8 @@ void environment_surface(int mat, vec3 p, vec3 n, inout vec3 albedo, inout vec3 
 			float x = p.x * 2.6 + p.z * 2.6 + mod(row, 2.0) * 0.5;
 			float slate = fract(p.y / (WALL_ROW * 2.0)) < 0.5 ? 0.22 : 0.65 + 0.5 * hash21(vec2(floor(x), row));
 			albedo = vec3(0.34, 0.37, 0.46) * slate;
+			// Ряды черепицы — горизонтальными штрихами, а не буквами.
+			ramp = RAMP_PLANK;
 			if (world_at(p.xz).b <= 0.5 && value_noise(p.xz * 1.7 + p.y) > 0.58) {
 				albedo = vec3(0.72, 0.80, 0.94);
 				ramp = RAMP_PATH;

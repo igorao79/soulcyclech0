@@ -43,8 +43,9 @@ const int MAT_SHOE = 31;
 const int MAT_STAFF = 32;
 const int MAT_STOLE = 33;
 const int MAT_BUCKLE = 34;
+const int MAT_BOOK = 35;
 // Материалы фигур: два диапазона, между ними цветок и стебель.
-const int MAT_FIGURE_LAST = 34;
+const int MAT_FIGURE_LAST = 35;
 
 const int PROP_PINE = 1;
 const int PROP_TREE = 2;
@@ -78,6 +79,10 @@ uniform float player_phase = 0.0;
 uniform float player_move = 0.0;
 // 0 — стоит, 1 — сидит на земле, обхватив колени. Пока только у Безымянного.
 uniform float player_sit = 0.0;
+// 0 — стоит, 1 — сидит на стуле у стола, руки на столешнице. Только у Безымянного.
+uniform float player_chair = 0.0;
+// 1 — несёт книгу в правой руке.
+uniform float player_book = 0.0;
 uniform vec2 player_lean = vec2(0.0);
 uniform vec2 coat_lag = vec2(0.0);
 uniform int player_style = 0;

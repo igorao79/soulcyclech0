@@ -9,11 +9,14 @@ const UiStyle := preload("res://scripts/ui/ui_style.gd")
 # 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном склоне над озером,
 #    над ним идёт звездопад. Под конец болид, он встаёт.
 # 2. Вид сверху со свободным управлением (движок ASCII-ночи, раскладка «тропа у озера»):
-#    он стоит на тропе у воды, решает, что пора домой, и игрок ведёт его через ельник к дому.
-# 3. У дома кадр гаснет: «продолжение следует», возврат на главный экран.
+#    он стоит на тропе у воды, вспоминает о смене в библиотеке, и игрок ведёт его через
+#    ельник в городок с каменными домиками, по улице к библиотеке.
+# 3. Библиотека изнутри (library_scene.gd): взять книгу с полки, сесть за стол — видение.
+# 4. Кадр гаснет: «продолжение следует», возврат на главный экран.
 
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const AsciiDemo := preload("res://scripts/ascii/ascii_demo.gd")
+const LibraryScene := preload("res://scripts/chapter/library_scene.gd")
 const SCREEN_SHADER := preload("res://scripts/chapter/chapter_one.gdshader")
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
 const TITLE_SCENE := "res://scenes/title.tscn"
@@ -25,17 +28,18 @@ const YAW_SIT := -2.1
 const CUTSCENE_TIME := 15.0
 const STAND_TIME := 2.0
 const TO_TOP_TIME := 1.4
-const HOME_REACH := 4.0
+const DOOR_REACH := 2.2
+const TO_LIBRARY_TIME := 1.4
 
 const CHAPTER_LABEL := "Глава первая"
 const CHAPTER_NAME := "Звездопад"
 const LINES: Array[Dictionary] = [
 	{"speaker": &"nameless", "text": "Опять звездопад. Каждый год в эту ночь — и каждый раз будто впервые."},
 	{"speaker": &"nameless", "text": "…Уже совсем поздно. Пора закругляться."},
-	{"speaker": &"nameless", "text": "Тропа к дому — через ельник, вверх по склону. Пойду."},
+	{"speaker": &"nameless", "text": "До рассвета моя смена в библиотеке. Через ельник, а там по городу — успею."},
 ]
 
-enum Beat { CARD, SITTING, STANDING, TO_TOP, TOP, ENDING }
+enum Beat { CARD, SITTING, STANDING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
 
 const SILVER := Color(0.86, 0.89, 0.98)
 const BONE := Color(0.95, 0.91, 0.84)
@@ -49,6 +53,7 @@ var curtain: ColorRect
 var serif: Font
 var music: AudioStreamPlayer
 var demo: AsciiDemo
+var library: Node
 
 var beat := Beat.CARD
 var beat_time := 0.0
@@ -102,6 +107,10 @@ func _process(delta: float) -> void:
 			_to_top()
 		Beat.TOP:
 			_top()
+		Beat.TO_LIBRARY:
+			_to_library()
+		Beat.LIBRARY:
+			pass
 		Beat.ENDING:
 			_ending()
 	if screen_material != null:
@@ -158,14 +167,29 @@ func _top() -> void:
 	if not spoke and beat_time > 1.8:
 		spoke = true
 		demo.say(LINES)
-	var door := demo.world.chapel + Vector2(0.0, 5.0)
-	if spoke and demo.dialogue_lines.is_empty() and demo.player_position.distance_to(door) < HOME_REACH:
-		_go(Beat.ENDING)
+	# Дверь библиотеки — в торце башни, к югу.
+	var door := demo.world.chapel + Vector2(0.0, 3.4)
+	if spoke and demo.dialogue_lines.is_empty() and demo.player_position.distance_to(door) < DOOR_REACH:
+		_go(Beat.TO_LIBRARY)
+
+
+# У двери кадр гаснет, музыка улицы стихает, внутри — тишина библиотеки.
+func _to_library() -> void:
+	curtain.color.a = clampf(beat_time / TO_LIBRARY_TIME, 0.0, 1.0)
+	music.volume_db = lerpf(-17.0, -26.0, clampf(beat_time / TO_LIBRARY_TIME, 0.0, 1.0))
+	if beat_time >= TO_LIBRARY_TIME and demo != null:
+		demo.queue_free()
+		demo = null
+		library = LibraryScene.new()
+		library.finished.connect(func() -> void: _go(Beat.ENDING))
+		add_child(library)
+		curtain.color.a = 0.0
+		_go(Beat.LIBRARY)
 
 
 func _ending() -> void:
 	curtain.color.a = clampf(beat_time / 1.8, 0.0, 1.0)
-	music.volume_db = lerpf(-17.0, -40.0, clampf(beat_time / 5.5, 0.0, 1.0))
+	music.volume_db = lerpf(-26.0, -40.0, clampf(beat_time / 5.5, 0.0, 1.0))
 	end_alpha = clampf((beat_time - 1.8) / 0.8, 0.0, 1.0) * clampf((5.6 - beat_time) / 0.8, 0.0, 1.0)
 	if beat_time > 6.0:
 		set_process(false)

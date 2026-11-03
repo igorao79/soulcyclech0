@@ -14,6 +14,9 @@ const PROP_GRAVE := 5
 const PROP_ROCK := 6
 const PROP_STUMP := 7
 const PROP_BOULDER := 8
+const PROP_HOUSE := 9
+# Домик городка: те же числа в ascii_props.gdshaderinc (HOUSE_HALF).
+const HOUSE_HALF := Vector2(2.1, 1.5)
 
 const SPAWN := Vector2(60.0, 33.0)
 const KEEPER := Vector2(64.5, 30.5)
@@ -85,6 +88,10 @@ var rocks: Array[Vector3] = [
 	Vector3(49.5, 47.5, 0.9), Vector3(43.5, 47.5, 0.5), Vector3(73.5, 47.5, 0.8),
 ]
 var stumps: Array[Vector3] = [Vector3(52.2, 36.8, 0.5)]
+# Каменные домики: x, z, вариант (0..1: ширина, труба, горит ли свет).
+var house_points: Array[Vector3] = []
+# Городок: центр и радиус, внутри не растёт лес и выровнена земля.
+var town := Vector3(-1000.0, -1000.0, 0.0)
 var garden_on := true
 # Насколько земля поднимается от воды: у тропы к дому это заметный склон.
 var lake_rise := 0.0
@@ -98,6 +105,8 @@ var obstacles: Array[Vector3] = []
 # Препятствия разложены по клеткам сетки реквизита, которые они накрывают.
 var _obstacle_cells := {}
 var lanterns := PackedVector3Array()
+# Поставленные домики: x, z, полуширина по x (с учётом варианта).
+var houses: Array[Vector3] = []
 var map_texture: ImageTexture
 var prop_texture: ImageTexture
 
@@ -119,7 +128,8 @@ func _init(world_layout: StringName = &"crossroads") -> void:
 	_build_props()
 
 
-# Тропа у озера: большое озеро на юго-западе, снежный склон, тропа через ельник к дому.
+# Тропа у озера: большое озеро на юго-западе, снежный склон, тропа через ельник
+# в городок с каменными домиками. Улица идёт на север, в её конце библиотека.
 func _use_lake_trail() -> void:
 	var nowhere := Vector2(-1000.0, -1000.0)
 	spawn = Vector2(49.0, 45.0)
@@ -129,17 +139,23 @@ func _use_lake_trail() -> void:
 	flower = nowhere
 	islet = nowhere
 	pier_rect = Vector4(-10.0, -10.0, -9.0, -9.0)
-	chapel = Vector2(94.0, 15.0)
+	# Библиотека — каменное здание с башней в конце улицы, дверью к югу.
+	chapel = Vector2(88.0, 9.5)
 	pond_center = Vector2(30.0, 64.0)
 	pond_radii = Vector2(27.0, 21.0)
 	routes = [[
-		Vector2(49, 45), Vector2(53, 40), Vector2(59, 37), Vector2(64, 32), Vector2(70, 29),
-		Vector2(77, 25), Vector2(84, 22), Vector2(91, 20), Vector2(94, 19.5),
+		Vector2(49, 45), Vector2(53, 40), Vector2(59, 37), Vector2(64, 33), Vector2(70, 31),
+		Vector2(77, 30.5), Vector2(83, 30), Vector2(88, 27.5), Vector2(88, 20), Vector2(88, 14),
 	]]
 	boulders = [Vector3(43.5, 49.5, 1.6), Vector3(55.5, 49.5, 1.4), Vector3(61.5, 43.5, 1.8)]
 	ruin_walls = []
-	clearings = [Vector3(49.0, 45.0, 3.5), Vector3(94.0, 20.0, 4.5)]
-	lantern_points = [Vector2(88.5, 21.0), Vector2(91.5, 23.0)]
+	clearings = [Vector3(49.0, 45.0, 3.5), Vector3(88.0, 14.5, 3.0)]
+	town = Vector3(88.0, 20.0, 15.0)
+	house_points = [
+		Vector3(83.3, 26.0, 0.62), Vector3(92.7, 26.0, 0.83), Vector3(83.3, 19.0, 0.21),
+		Vector3(92.7, 19.0, 0.38), Vector3(77.6, 22.5, 0.47), Vector3(98.4, 22.5, 0.95),
+	]
+	lantern_points = [Vector2(86.0, 29.6), Vector2(90.0, 22.6), Vector2(86.0, 15.4)]
 	graves = []
 	rocks = [Vector3(66.0, 35.5, 0.5), Vector3(73.0, 31.0, 0.4), Vector3(52.0, 47.0, 0.3)]
 	stumps = [Vector3(56.5, 41.5, 0.5)]
@@ -238,10 +254,14 @@ func surface_at(point: Vector2) -> StringName:
 	return &"snow"
 
 
-# Часовня, колокольня и стены руин — прямоугольники со знаковым расстоянием.
+# Часовня, колокольня, домики и стены руин — прямоугольники со знаковым расстоянием.
 func _structure_distance(point: Vector2) -> float:
 	var best := _box_distance(point - chapel - Vector2(0.0, 0.2), Vector2(1.9, 2.7))
 	best = minf(best, _box_distance(point - bell, Vector2(1.4, 0.8)))
+	for house in houses:
+		var offset := point - Vector2(house.x, house.y)
+		if absf(offset.x) < 6.0 and absf(offset.y) < 5.0:
+			best = minf(best, _box_distance(offset, Vector2(house.z, HOUSE_HALF.y)) - HERO_RADIUS)
 	return minf(best, _ruin_distance(point))
 
 
@@ -296,6 +316,10 @@ func _build_terrain() -> void:
 			var field := _pond_field(point)
 			var land := 0.30 + _noise.get_noise_2dv(point) * 0.32 + clampf(-field, 0.0, 2.5) * lake_rise
 			var height := lerpf(land, -0.72, smoothstep(-0.12, 0.42, field))
+			# Городок стоит на ровной площадке: склон под ним выглажен.
+			var in_town := 1.0 - smoothstep(town.z * 0.75, town.z, point.distance_to(Vector2(town.x, town.y)))
+			if in_town > 0.0:
+				height = lerpf(height, _town_level(), in_town)
 			var islet_rise := 1.0 - point.distance_to(islet) / 2.7
 			if islet_rise > 0.0:
 				height = maxf(height, -0.3 + smoothstep(0.0, 0.8, islet_rise) * 0.72)
@@ -306,6 +330,12 @@ func _build_terrain() -> void:
 			heights[y * texel_size.x + x] = height
 			image.set_pixel(x, y, Color(height, path, _garden(point), 1.0))
 	map_texture = ImageTexture.create_from_image(image)
+
+
+# Высота площадки городка: склон в его центре без мелкого шума.
+func _town_level() -> float:
+	var field := _pond_field(Vector2(town.x, town.y))
+	return 0.30 + clampf(-field, 0.0, 2.5) * lake_rise
 
 
 func _build_props() -> void:
@@ -321,6 +351,14 @@ func _build_props() -> void:
 	# Свет из окон и двери часовни ложится на снег перед ней.
 	# Источник вынесен вперёд, иначе камень фасада заливает оранжевым.
 	lanterns.append(Vector3(chapel.x, 1.6, chapel.y + 7.5))
+
+	for house_point in house_points:
+		var center := _place(PROP_HOUSE, Vector2(house_point.x, house_point.y), house_point.z)
+		var width := lerpf(0.86, 1.12, fposmod(house_point.z * 7.3, 1.0))
+		houses.append(Vector3(center.x, center.y, HOUSE_HALF.x * width))
+		# Свет из окон ложится на снег перед домом, если в доме не спят.
+		if fposmod(house_point.z * 13.7, 1.0) > 0.3:
+			lanterns.append(Vector3(center.x - HOUSE_HALF.x * width * 0.18, 1.4, center.y + HOUSE_HALF.y + 2.0))
 
 	for grave_point in graves:
 		_place(PROP_GRAVE, grave_point, 0.5)
@@ -351,6 +389,13 @@ func _try_forest(cell: Vector2i) -> void:
 		return
 	if point.distance_to(chapel) < 6.5 or point.distance_to(bell) < 3.5:
 		return
+	# В городке леса нет, только редкие молодые ели во дворах; к стенам деревья не жмутся.
+	if not houses.is_empty() and _near_house(point) < 2.4:
+		return
+	if point.distance_to(Vector2(town.x, town.y)) < town.z - 1.0:
+		if _random.randf() < 0.14 and _near_house(point) > 3.4:
+			_place(PROP_PINE, point, _random.randf() * 0.4)
+		return
 	if _ruin_distance(point) < 2.2:
 		return
 	for boulder in boulders:
@@ -373,6 +418,13 @@ func _try_forest(cell: Vector2i) -> void:
 			density = 1.0
 		if _random.randf() < density:
 			_place(PROP_PINE, point, scale)
+
+
+func _near_house(point: Vector2) -> float:
+	var best := 1000.0
+	for house in houses:
+		best = minf(best, _box_distance(point - Vector2(house.x, house.y), Vector2(house.z, HOUSE_HALF.y)))
+	return minf(best, _route_distance(point) - 1.2)
 
 
 func _place(kind: int, point: Vector2, scale: float) -> Vector2:
@@ -419,4 +471,7 @@ func _collision_radius(kind: int, scale: float) -> float:
 			return 0.42 + HERO_RADIUS * 0.6
 		PROP_STUMP:
 			return 0.32 + HERO_RADIUS
+		PROP_HOUSE:
+			# Дом не пускает героя своей коробкой в _structure_distance.
+			return 0.0
 	return HERO_RADIUS

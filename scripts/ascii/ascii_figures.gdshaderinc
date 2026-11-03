@@ -9,6 +9,9 @@ const float GAIT_REACH = 0.52;
 // Сидя таз опускается с 0.90 до этой высоты; на столько же опускается весь корпус.
 const float SIT_DROP_HIP = 0.24;
 const float SIT_DROP = 0.66;
+// На стуле: таз на сиденье (0.46 м), корпус опускается меньше.
+const float CHAIR_HIP = 0.64;
+const float CHAIR_DROP = 0.26;
 
 // Номера знаков в ряду 14 атласа: " .:'-~=|+*os%#@8".
 const int FG_NONE = 0;
@@ -39,7 +42,7 @@ vec3 gait_foot(float phase) {
 }
 
 
-void sd_leg(vec3 q, float side, float phase, float amount, float bob, float sit, int trouser, int shin, int shoe, inout float d, inout int m) {
+void sd_leg(vec3 q, float side, float phase, float amount, float bob, float sit, float chair, int trouser, int shin, int shoe, inout float d, inout int m) {
 	vec3 pose = gait_foot(phase) * amount;
 	vec3 hip = vec3(side * 0.11, 0.90 + bob, 0.0);
 	vec3 foot = vec3(side * 0.12, 0.09 + pose.y, pose.x);
@@ -49,6 +52,10 @@ void sd_leg(vec3 q, float side, float phase, float amount, float bob, float sit,
 	hip = mix(hip, vec3(side * 0.12, SIT_DROP_HIP, -0.06), sit);
 	knee = mix(knee, vec3(side * 0.14, 0.60, 0.40), sit);
 	foot = mix(foot, vec3(side * 0.13, 0.09, 0.62), sit);
+	// На стуле: бёдра горизонтально по сиденью, голени отвесно, стопы на полу.
+	hip = mix(hip, vec3(side * 0.11, CHAIR_HIP, -0.04), chair);
+	knee = mix(knee, vec3(side * 0.13, CHAIR_HIP + 0.01, 0.40), chair);
+	foot = mix(foot, vec3(side * 0.13, 0.09, 0.47), chair);
 	take(d, m, sd_capsule(q, hip, knee, 0.085), trouser);
 	take(d, m, sd_capsule(q, knee, foot, 0.072), shin);
 	take(d, m, sd_capsule(q, foot, foot + vec3(0.0, -0.02 + pose.z, 0.15), 0.072), shoe);
@@ -106,11 +113,14 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 	float bob;
 	float swing = apply_body_motion(q, phase, amount, bob);
 	float sit = player_sit;
-	sd_leg(q, -1.0, phase, amount, bob, sit, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
-	sd_leg(q, 1.0, phase + PI, amount, bob, sit, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	float chair = player_chair;
+	sd_leg(q, -1.0, phase, amount, bob, sit, chair, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	sd_leg(q, 1.0, phase + PI, amount, bob, sit, chair, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
 	// Сидя корпус опускается к земле и клонится вперёд, к коленям.
-	q.y += SIT_DROP * sit;
+	q.y += SIT_DROP * sit + CHAIR_DROP * chair;
 	q.z -= sit * 0.22 * max(q.y - 0.9, 0.0);
+	// За столом чуть подаётся к столешнице.
+	q.z -= chair * 0.14 * max(q.y - 0.9, 0.0);
 	twist_upper_body(q, phase, amount, bob);
 	vec2 wind = local_wind();
 
@@ -141,14 +151,25 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 	// Сидя руки лежат на коленях.
 	hand_l = mix(hand_l, vec3(-0.19, 1.22, 0.44), sit);
 	hand_r = mix(hand_r, vec3(0.19, 1.22, 0.44), sit);
+	// За столом кисти лежат на столешнице перед грудью.
+	hand_l = mix(hand_l, vec3(-0.16, 1.30, 0.50), chair);
+	hand_r = mix(hand_r, vec3(0.16, 1.30, 0.50), chair);
+	// Книга прижата к боку правой рукой.
+	hand_r = mix(hand_r, vec3(0.27, 0.86, 0.10), player_book * (1.0 - chair));
 	take(d, m, sd_capsule(q, vec3(-0.235, 1.26, 0.0), hand_l + vec3(0.0, 0.08, 0.0), 0.095), MAT_COAT);
 	take(d, m, sd_capsule(q, vec3(0.235, 1.26, 0.0), hand_r + vec3(0.0, 0.08, 0.0), 0.095), MAT_COAT);
 	take(d, m, sd_capsule(q, hand_l + vec3(0.0, 0.09, 0.0), hand_l + vec3(0.0, 0.15, 0.0), 0.112), MAT_COAT);
 	take(d, m, sd_capsule(q, hand_r + vec3(0.0, 0.09, 0.0), hand_r + vec3(0.0, 0.15, 0.0), 0.112), MAT_COAT);
 	take(d, m, length(q - hand_l) - 0.062, MAT_SKIN);
 	take(d, m, length(q - hand_r) - 0.062, MAT_SKIN);
+	if (player_book > 0.5 && chair < 0.5) {
+		// Толстый том в тёмном переплёте, корешком наружу.
+		take(d, m, sd_box(q - hand_r - vec3(0.05, 0.03, -0.01), vec3(0.045, 0.17, 0.13)) - 0.01, MAT_BOOK);
+	}
 
 	vec3 head = turn_head(q, amount, 0.0);
+	// За столом голова склонена к книге.
+	head.z -= chair * 0.32 * max(head.y - 1.3, 0.0);
 	take(d, m, length((head - vec3(0.0, 1.56, 0.03)) * vec3(0.92, 1.0, 1.0)) - 0.2, MAT_SKIN);
 	// Пряди сносит ветром и шагом: концы двигаются сильнее макушки.
 	float sway = smoothstep(1.78, 1.36, head.y);
@@ -173,8 +194,8 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 void sd_wanderer(vec3 q, float phase, float amount, inout float d, inout int m) {
 	float bob;
 	float swing = apply_body_motion(q, phase, amount, bob);
-	sd_leg(q, -1.0, phase, amount, bob, 0.0, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
-	sd_leg(q, 1.0, phase + PI, amount, bob, 0.0, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
+	sd_leg(q, -1.0, phase, amount, bob, 0.0, 0.0, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
+	sd_leg(q, 1.0, phase + PI, amount, bob, 0.0, 0.0, MAT_TROUSER, MAT_BOOT, MAT_BOOT, d, m);
 	twist_upper_body(q, phase, amount, bob);
 	vec2 wind = local_wind();
 
@@ -332,6 +353,10 @@ bool figure_surface(int mat, vec3 p, vec3 n, inout vec3 albedo, inout vec3 emiss
 		ramp = RAMP_GLOW;
 	} else if (mat == MAT_EYE_DARK) {
 		albedo = vec3(0.0);
+	} else if (mat == MAT_BOOK) {
+		// Тёмно-синий переплёт с тусклым серебряным тиснением.
+		albedo = vec3(0.16, 0.18, 0.36);
+		emissive = vec3(0.07, 0.08, 0.16);
 	} else {
 		ramp = RAMP_SOLID;
 		return false;
@@ -426,5 +451,7 @@ void figure_glyph(int mat, vec3 p, vec2 wc, float light, inout vec3 col, inout i
 		level = FG_BAR;
 	} else if (mat == MAT_EYE_DARK) {
 		col = vec3(0.012);
+	} else if (mat == MAT_BOOK) {
+		level = mod(wc.y, 2.0) < 1.0 ? FG_EQUAL : FG_HASH;
 	}
 }

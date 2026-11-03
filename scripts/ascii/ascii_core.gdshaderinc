@@ -162,7 +162,7 @@ void surface_of(int mat, vec3 p, vec3 n, float garden, out vec3 albedo, out vec3
 		environment_surface(mat, p, n, albedo, emissive, ramp);
 	}
 	// На неживых поверхностях зимой лежит снег.
-	if (garden < 0.5 && (mat == MAT_ROOF || mat == MAT_STONE || mat == MAT_WALL || mat == MAT_WOOD || mat == MAT_TRUNK)) {
+	if (garden < 0.5 && (mat == MAT_ROOF || mat == MAT_STONE || mat == MAT_WALL || mat == MAT_HOUSE || mat == MAT_WOOD || mat == MAT_TRUNK)) {
 		float snow = smoothstep(0.45, 0.85, n.y);
 		albedo = mix(albedo, vec3(0.80, 0.88, 1.0), snow * 0.7);
 		if (snow > 0.5) {
