@@ -5,6 +5,8 @@ extends Node
 # не всегда знает новые глобальные классы, и сцена падала при переходе.
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const DialogueView := preload("res://scripts/ui/dialogue_view.gd")
+const GlyphTitle := preload("res://scripts/ui/glyph_title.gd")
+const Ornament := preload("res://scripts/ui/ornament.gd")
 
 # Глава первая, «Звездопад».
 # 0. Пробуждение в храме от первого лица (temple_wake.gd): красная комната, меч в столбе
@@ -58,7 +60,6 @@ const DOOR_REACH := 2.2
 const TO_LIBRARY_TIME := 1.4
 
 const CHAPTER_LABEL := "глава I"
-const SCRAMBLE := "#%&@$*+=-:;!?/\\|<>~^"
 const CHAPTER_NAME := "Звездопад"
 # На берегу, встав и оглянувшись на небо.
 const SHORE_LINES: Array[String] = [
@@ -86,6 +87,8 @@ var music: AudioStreamPlayer
 var demo: AsciiDemo
 var library: Node
 var temple: Node
+var card_title: Control
+var card_shown := ""
 var music_tween: Tween
 
 var beat := Beat.CARD
@@ -210,6 +213,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _notification(what: int) -> void:
 	if (what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED) and overlay != null:
 		overlay.queue_redraw()
+		if card_title != null:
+			card_title.visible = what == NOTIFICATION_UNPAUSED
 
 
 func _go(next: Beat) -> void:
@@ -465,6 +470,9 @@ func _build_screen(atlas: Texture2D, cell: Vector2i) -> void:
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.draw.connect(_draw_overlay)
 	top_layer.add_child(overlay)
+	# Карточка главы и «продолжение следует» — знаками по форме букв, как заголовок игры.
+	card_title = GlyphTitle.new()
+	top_layer.add_child(card_title)
 	get_window().size_changed.connect(_fit)
 	_fit()
 
@@ -484,62 +492,29 @@ func _draw_overlay() -> void:
 		DialogueView.draw(
 			overlay, mono_font, serif, "Безымянный", SILVER, SHORE_LINES[shore_line], int(shore_typed), elapsed
 		)
+	var cap := size.y / UiStyle.SERIF_CAP
+	var shown := ""
+	var alpha := 0.0
 	if beat == Beat.CARD:
-		var alpha := clampf((beat_time - 0.6) / 0.9, 0.0, 1.0) * clampf((4.2 - beat_time) / 0.9, 0.0, 1.0)
-		if alpha > 0.0:
-			# Как пункты меню: буквы собираются из шума слева направо и так же рассыпаются.
-			var label_size := roundi(13 * scale)
-			_draw_decoded(mono_font, CHAPTER_LABEL, size * Vector2(0.5, 0.43), label_size, Color(SILVER, alpha * 0.75), 0.6, 0.5, 0.9)
-			_draw_decoded(serif, CHAPTER_NAME, size * Vector2(0.5, 0.53), roundi(46 * scale), Color(BONE, alpha), 0.12, 0.9, 1.1)
-			_draw_rule(Vector2(size.x * 0.5, size.y * 0.585), 70.0 * scale * clampf((beat_time - 1.6) / 0.8, 0.0, 1.0), scale, alpha)
+		alpha = clampf((beat_time - 0.4) / 0.6, 0.0, 1.0) * clampf((4.2 - beat_time) / 0.9, 0.0, 1.0)
+		shown = "card"
+		Ornament.draw(overlay, mono_font, Vector2(size.x * 0.5, size.y * 0.6),
+			size.y * 0.16 * clampf((beat_time - 1.4) / 0.8, 0.0, 1.0), roundi(9 * scale), alpha, elapsed)
 	elif beat == Beat.ENDING and end_alpha > 0.0:
-		_draw_spaced("продолжение следует", size * Vector2(0.5, 0.5), roundi(20 * scale), Color(SILVER, end_alpha), 0.18)
-
-
-# Надпись вразрядку, буква за буквой проступает из мечущихся знаков шума (красноватых),
-# а перед уходом карточки снова рассыпается в шум.
-func _draw_decoded(font: Font, text: String, center: Vector2, font_size: int, color: Color, tracking: float,
-		start: float, span: float) -> void:
-	var width := 0.0
-	for i in range(text.length()):
-		width += font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + font_size * tracking
-	width -= font_size * tracking
-	var x := center.x - width * 0.5
-	for i in range(text.length()):
-		var letter := text[i]
-		var step := font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + font_size * tracking
-		var settle := start + span * float(i) / maxf(text.length(), 1.0)
-		var scatter := 3.4 + 0.4 * float(i) / maxf(text.length(), 1.0)
-		if letter != " " and (beat_time < settle or beat_time > scatter):
-			if beat_time > settle - 0.5 or beat_time > scatter:
-				var noise := SCRAMBLE[(i * 7 + int(elapsed * 24.0)) % SCRAMBLE.length()]
-				mono_font.draw_string(overlay.get_canvas_item(), Vector2(x + step * 0.2, center.y).floor(), noise,
-					HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(font_size * 0.6), Color(0.78, 0.30, 0.36, color.a))
-		else:
-			font.draw_string(overlay.get_canvas_item(), Vector2(x, center.y).floor(), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
-		x += step
-
-
-func _draw_spaced(text: String, center: Vector2, font_size: int, color: Color, tracking: float) -> void:
-	var width := 0.0
-	for i in range(text.length()):
-		width += serif.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + font_size * tracking
-	width -= font_size * tracking
-	var x := center.x - width * 0.5
-	for i in range(text.length()):
-		serif.draw_string(overlay.get_canvas_item(), Vector2(x, center.y).floor(), text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
-		x += serif.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + font_size * tracking
-
-
-func _draw_rule(mid: Vector2, reach: float, scale: float, alpha: float) -> void:
-	var gap := 7.0 * scale
-	overlay.draw_line(mid - Vector2(reach, 0), mid - Vector2(gap, 0), Color(RULE, 0.8 * alpha), 1.0)
-	overlay.draw_line(mid + Vector2(gap, 0), mid + Vector2(reach, 0), Color(RULE, 0.8 * alpha), 1.0)
-	var tip := 3.5 * scale
-	overlay.draw_colored_polygon(
-		PackedVector2Array([mid + Vector2(0, -tip), mid + Vector2(tip, 0), mid + Vector2(0, tip), mid + Vector2(-tip, 0)]),
-		Color(EMBER, alpha)
-	)
+		alpha = end_alpha
+		shown = "end"
+	if card_title != null:
+		if shown != card_shown:
+			card_shown = shown
+			var lines: Array[Dictionary] = []
+			if shown == "card":
+				lines.append({"text": CHAPTER_LABEL, "size": roundi(cap * 0.04), "center": size * Vector2(0.5, 0.42), "small": true, "kind": GlyphTitle.DIM})
+				lines.append({"text": CHAPTER_NAME, "size": roundi(cap * 0.1), "center": size * Vector2(0.5, 0.55), "tracking": 0.06})
+			elif shown == "end":
+				lines.append({"text": "продолжение следует", "size": roundi(cap * 0.05), "center": size * Vector2(0.5, 0.52), "small": true})
+			card_title.set_lines(lines)
+			card_title.restart()
+		card_title.fade = alpha
 
 
 func _build_audio() -> void:

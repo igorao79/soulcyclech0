@@ -11,6 +11,7 @@ signal activated(id: StringName)
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const SHADER := preload("res://scripts/ui/glyph_text.gdshader")
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
+const Ornament := preload("res://scripts/ui/ornament.gd")
 # Знаки книги мельче, чем у мира, и считаются от высоты окна, а не от масштаба экрана:
 # на Retina сетка знаков остаётся той же доли экрана и надписи читаются одинаково.
 const FINE_CELL_SHARE := 1.0 / 200.0
@@ -43,6 +44,7 @@ var _atlas_height := 0
 var _plain: Control
 var _plain_font: Font
 var _name_font: Font
+var _mono: Font
 var _material: ShaderMaterial
 var _time := 0.0
 var _opened_at := 0.0
@@ -56,6 +58,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_font = UiStyle.serif(700.0)
 	_name_font = UiStyle.serif(600.0)
+	_mono = FontAtlas.create_font()
 	_mask = SubViewport.new()
 	_mask.transparent_bg = true
 	_mask.disable_3d = true
@@ -231,15 +234,10 @@ func _draw_plain() -> void:
 			_plain.draw_colored_polygon(PackedVector2Array([
 				mid + Vector2(0, -tip), mid + Vector2(tip, 0), mid + Vector2(0, tip), mid + Vector2(-tip, 0)
 			]), Color(EMBER, fade))
-	# Черта с ромбом под заголовком.
+	# Под заголовком — разделитель из знаков с тлеющим ромбом.
 	var title_y: float = _lines[0]["y"] + size.y * 0.04
-	var mid := Vector2(size.x * center.x, title_y)
-	var reach := size.y * 0.1 * clampf(since / 0.8, 0.0, 1.0)
-	_plain.draw_line(mid - Vector2(reach, 0), mid - Vector2(8, 0), Color(RULE, 0.8 * fade), 1.0)
-	_plain.draw_line(mid + Vector2(8, 0), mid + Vector2(reach, 0), Color(RULE, 0.8 * fade), 1.0)
-	_plain.draw_colored_polygon(PackedVector2Array([
-		mid + Vector2(0, -4), mid + Vector2(4, 0), mid + Vector2(0, 4), mid + Vector2(-4, 0)
-	]), Color(EMBER, fade))
+	Ornament.draw(_plain, _mono, Vector2(size.x * center.x, title_y), size.y * 0.14 * clampf(since / 0.8, 0.0, 1.0),
+		roundi(size.y / UiStyle.LOGICAL_HEIGHT * 9.0), fade, _time)
 
 
 func _process(delta: float) -> void:

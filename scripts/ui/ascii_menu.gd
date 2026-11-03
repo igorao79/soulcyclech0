@@ -6,6 +6,8 @@ const AsciiFontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 # Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
 # не всегда знает новые глобальные классы, и сцена падала при переходе.
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
+const GlyphTitle := preload("res://scripts/ui/glyph_title.gd")
+const Ornament := preload("res://scripts/ui/ornament.gd")
 
 # Меню из символов: те же моноширинные знаки, что и мир. Заголовок антиквой, ползунки [███░░░],
 # переключатели [x]. Пункты расшифровываются из шума при появлении, выбранный тлеет.
@@ -48,6 +50,7 @@ var _cell := Vector2i(10, 20)
 var _time := 0.0
 var _opened_at := 0.0
 var _flash_at := -10.0
+var _title: Control
 
 
 func _ready() -> void:
@@ -57,6 +60,9 @@ func _ready() -> void:
 	_heading_font = UiStyle.serif(600.0)
 	resized.connect(_fit)
 	_fit()
+	# Заголовок складывается из знаков, как «ЦИКЛ ДУШ» на главном экране.
+	_title = GlyphTitle.new()
+	add_child(_title)
 
 
 ## Меню настроек: громкость по шинам, полный экран и вертикальная синхронизация.
@@ -93,6 +99,8 @@ func open() -> void:
 	selected = 0
 	_opened_at = _time
 	_flash_at = _time
+	if _title != null:
+		_title.restart()
 	queue_redraw()
 
 
@@ -108,6 +116,7 @@ func _process(delta: float) -> void:
 	_time += delta
 	if visible:
 		queue_redraw()
+		_update_title()
 
 
 func _fit() -> void:
@@ -119,7 +128,7 @@ func _fit() -> void:
 
 
 func _heading_height() -> float:
-	return _heading_px * 2.3 if heading != "" else 0.0
+	return _heading_px * 2.6 if heading != "" else 0.0
 
 
 func _top() -> float:
@@ -159,33 +168,23 @@ func _draw() -> void:
 		_draw_line(start, row, line, index, is_selected)
 
 
-# Заголовок антиквой вразрядку, под ним тонкая черта с ромбом. Проявляется при открытии.
+func _update_title() -> void:
+	if _title == null:
+		return
+	var lines: Array[Dictionary] = []
+	if heading != "":
+		# Знаками буква читается от высоты прописных в ~6 знаков: кегль не мельче этого.
+		var size := maxi(roundi(_heading_px * 1.25), roundi(get_rect().size.y * 0.075))
+		lines.append({"text": heading, "size": size, "center": Vector2(get_rect().size.x * center.x, _top() + _heading_px * 1.15),
+			"tracking": 0.08})
+	_title.set_lines(lines)
+
+
+# Под заголовком — разделитель из знаков с тлеющим ромбом.
 func _draw_heading() -> void:
 	var appear := clampf((_time - _opened_at) / 0.45, 0.0, 1.0)
-	var tracking := _heading_px * 0.32
-	var width := 0.0
-	for i in range(heading.length()):
-		width += _heading_font.get_string_size(heading[i], HORIZONTAL_ALIGNMENT_LEFT, -1, _heading_px).x + tracking
-	width -= tracking
-	var x := get_rect().size.x * center.x - width * 0.5
-	var baseline := _top() + _heading_px * 1.05
-	var color := Color(SILVER, appear)
-	for i in range(heading.length()):
-		var letter := heading[i]
-		_heading_font.draw_string(get_canvas_item(), Vector2(x, baseline).floor(), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, _heading_px, color)
-		x += _heading_font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, _heading_px).x + tracking
-
-	var mid := Vector2(get_rect().size.x * center.x, _top() + _heading_px * 1.55)
-	var reach := maxf(width * 0.5, _heading_px * 3.0) * appear
-	var gap := _heading_px * 0.35
-	var line_color := Color(RULE, 0.8 * appear)
-	draw_line(mid - Vector2(reach, 0.0), mid - Vector2(gap, 0.0), line_color, 1.0)
-	draw_line(mid + Vector2(gap, 0.0), mid + Vector2(reach, 0.0), line_color, 1.0)
-	var tip := _heading_px * 0.16
-	draw_colored_polygon(
-		PackedVector2Array([mid + Vector2(0, -tip), mid + Vector2(tip, 0), mid + Vector2(0, tip), mid + Vector2(-tip, 0)]),
-		Color(EMBER, appear)
-	)
+	var mid := Vector2(get_rect().size.x * center.x, _top() + _heading_px * 1.85)
+	Ornament.draw(self, _font, mid, _heading_px * 3.2 * appear, _font_size, appear, _time)
 
 
 # Строка пункта: при появлении знаки встают на место слева направо, выбранный пункт

@@ -4,6 +4,7 @@ extends RefCounted
 # Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
 # не всегда знает новые глобальные классы, и сцена падала при переходе.
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
+const Ornament := preload("res://scripts/ui/ornament.gd")
 
 # Реплика внизу экрана без рамки: тень снизу, имя антиквой вразрядку, черта с ромбом,
 # текст моноширинной сеткой печатается по буквам, последние две ещё мечутся.
@@ -37,14 +38,17 @@ static func draw(
 		serif.draw_string(canvas.get_canvas_item(), Vector2(x, name_y).floor(), speaker[i], HORIZONTAL_ALIGNMENT_LEFT, -1, name_size, speaker_color)
 		x += serif.get_string_size(speaker[i], HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x + tracking
 	var name_end := x - tracking
-	var rule_y := name_y + name_size * 0.45
-	canvas.draw_line(Vector2(left, rule_y), Vector2(name_end, rule_y), Color(RULE, 0.8), 1.0)
-	var mid := Vector2(name_end + name_size * 0.4, rule_y)
-	var tip := name_size * 0.16
-	canvas.draw_colored_polygon(
-		PackedVector2Array([mid + Vector2(0, -tip), mid + Vector2(tip, 0), mid + Vector2(0, tip), mid + Vector2(-tip, 0)]),
-		EMBER
-	)
+	# Под именем — разделитель из знаков, от имени вправо.
+	var rule_y := name_y + name_size * 0.55
+	var dots := roundi(10 * scale)
+	var adv := mono.get_char_size("M".unicode_at(0), dots).x
+	var steps := ":-~=-:."
+	var count := int((name_end - left) / adv)
+	for i in range(count):
+		var letter := steps[i % steps.length()] if i < count - 1 else "◆"
+		var color := Color(RULE, 0.75 - 0.4 * float(i) / maxf(count, 1)) if i < count - 1 else EMBER
+		mono.draw_string(canvas.get_canvas_item(), Vector2(left + i * adv, rule_y + dots * 0.3).floor(), letter,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, dots, color)
 
 	var text_size := roundi(12 * scale)
 	var advance := mono.get_char_size("M".unicode_at(0), text_size).x
