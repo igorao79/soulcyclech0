@@ -153,7 +153,6 @@ func _process(delta: float) -> void:
 	elapsed += delta
 
 	if dialogue_lines.is_empty() and not resetting:
-		_handle_character_switch()
 		_handle_movement(delta)
 		_handle_interaction()
 	else:
@@ -328,18 +327,6 @@ func _push_uniforms() -> void:
 
 	glyph_material.set_shader_parameter("time", elapsed)
 	glyph_material.set_shader_parameter("scramble", scramble)
-
-
-func _handle_character_switch() -> void:
-	if chapter_mode:
-		return
-	var previous := character_index
-	if Input.is_action_just_pressed("switch_character_1"):
-		character_index = 0
-	elif Input.is_action_just_pressed("switch_character_2"):
-		character_index = 1
-	if character_index != previous:
-		_show_notice(CharacterCatalog.get_playable_profile(character_index).display_name)
 
 
 func _handle_movement(delta: float, has_control: bool = true) -> void:
@@ -748,8 +735,6 @@ func _install_input_actions() -> void:
 	_add_key_to_action("interact", KEY_E)
 	_add_key_to_action("interact", KEY_SPACE)
 	_add_key_to_action("interact", KEY_ENTER)
-	_add_key_to_action("switch_character_1", KEY_1)
-	_add_key_to_action("switch_character_2", KEY_2)
 
 
 func _add_key_to_action(action_name: StringName, keycode: Key) -> void:

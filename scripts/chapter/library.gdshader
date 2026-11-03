@@ -41,6 +41,9 @@ uniform float book_taken = 0.0;
 uniform float book_open = 0.0;
 // Насколько светится книга на полке: тлеет, когда герой рядом.
 uniform float book_glow = 0.0;
+// Уход в видение, как «Начать путь» на главном экране: от середины расходится
+// красный шум, за ним остаётся темнота. 0 — нет, 1 — кадр погас.
+uniform float outro = 0.0;
 
 
 float fbm(vec2 p) {
@@ -433,33 +436,62 @@ void fragment() {
 				col = sky;
 				under = sky;
 				backing = 0.7;
-				// Луна в верхнем углу окна.
-				vec2 moon = wp - vec2(mid + 0.38, 2.35);
-				if (length(moon) < 0.12) {
-					// Луна — плотный светлый диск, к краю реже.
-					ramp = RAMP_DENSE;
-					level = 15 - int(length(moon) / 0.12 * 5.0);
-					col = vec3(0.92, 0.94, 1.0);
-					under = vec3(0.55, 0.58, 0.72);
-				} else if (length(moon) < 0.3) {
-					col += vec3(0.25, 0.28, 0.45) * (1.0 - length(moon) / 0.3);
+				// Серп луны в верхнем углу окна: светлый диск, от которого откусана тень.
+				vec2 moon = wp - vec2(mid + 0.36, 2.36);
+				float moon_r = 0.11;
+				bool lit_moon = length(moon) < moon_r && length(moon - vec2(-0.05, 0.03)) > moon_r * 0.86;
+				if (lit_moon) {
+					ramp = RAMP_EDGE;
+					level = edge_level(vec2(moon.y, -moon.x));
+					col = vec3(0.95, 0.96, 1.0) * 1.2;
+					under = vec3(0.30, 0.33, 0.50);
+					backing = 0.5;
+				} else if (length(moon) < 0.32) {
+					col += vec3(0.22, 0.25, 0.42) * (1.0 - length(moon) / 0.32);
 					under = col;
 				}
-				// Снег за стеклом.
-				vec2 v = cell + vec2(floor(sin(time * 0.6 + cell.y * 0.05) * 2.0), -floor(time * 6.0));
-				vec2 tile = vec2(6.0, 5.0);
-				vec2 id = floor(v / tile);
-				if (mod(v, tile) == floor(vec2(hash21(id), hash21(id + 3.0)) * tile) && hash21(id + 7.0) > 0.4) {
-					ramp = RAMP_FLAKE;
-					level = hash21(id + 9.0) > 0.6 ? 5 : 0;
-					col = vec3(0.86, 0.90, 1.0);
+				// Снег за стеклом: крупные хлопья ближе, мелкие дальше.
+				for (int layer = 0; layer < 2; layer++) {
+					float fl = float(layer);
+					vec2 v = cell + vec2(floor(sin(time * 0.6 + cell.y * 0.05 + fl) * 2.0), -floor(time * (4.0 + fl * 4.0)));
+					vec2 tile = vec2(7.0 - fl, 6.0 - fl);
+					vec2 id = floor(v / tile);
+					if (mod(v, tile) == floor(vec2(hash21(id + fl), hash21(id + 3.0 + fl)) * tile) && hash21(id + 7.0 + fl) > 0.45) {
+						ramp = RAMP_FLAKE;
+						level = layer == 1 ? 5 : 0;
+						col = vec3(0.86, 0.90, 1.0) * (0.6 + 0.4 * fl);
+					}
 				}
-				// Крыши за окном — тёмный силуэт снизу.
-				if (wp.y < WINDOW_Y.x + 0.28 + 0.12 * step(0.5, fract(wp.x * 1.3))) {
-					ramp = RAMP_PATH;
-					level = 6 + int(grain * 3.0);
-					col = vec3(0.50, 0.55, 0.75) * 0.6;
-					under = vec3(0.04, 0.05, 0.09);
+				// Соседние дома за окном: двускатные крыши под снегом, трубы, тёплые окна.
+				float span = 0.62;
+				float house = floor((wp.x - WINDOW_X.x + 0.17) / span);
+				float hx = fract((wp.x - WINDOW_X.x + 0.17) / span) - 0.5;
+				float eave = WINDOW_Y.x + 0.16 + 0.05 * hash21(vec2(house, 4.0));
+				float ridge = eave + 0.24 - abs(hx) * span * 0.75;
+				float chimney_x = 0.22 * (hash21(vec2(house, 8.0)) - 0.5);
+				bool chimney = abs(hx - chimney_x) < 0.05 && wp.y < ridge + 0.1 && wp.y > ridge - 0.1;
+				if (wp.y < ridge || chimney) {
+					under = vec3(0.03, 0.035, 0.07);
+					backing = 0.8;
+					if (chimney) {
+						ramp = RAMP_EDGE;
+						level = 0;
+						col = vec3(0.20, 0.22, 0.32);
+					} else if (wp.y > ridge - 0.035 || (wp.y > eave && wp.y > ridge - 0.07 + hash21(cell) * 0.02)) {
+						// Снег лежит на скатах светлой кромкой.
+						ramp = RAMP_PATH;
+						level = 10 + int(grain * 4.0);
+						col = vec3(0.78, 0.84, 1.0) * 0.85;
+					} else if (wp.y < eave && abs(hx) < 0.3 && abs(hx - 0.12) < 0.05 && wp.y > WINDOW_Y.x + 0.06 && hash21(vec2(house, 2.0)) > 0.35) {
+						// Окно соседа светится.
+						ramp = RAMP_DENSE;
+						level = 12;
+						col = vec3(1.0, 0.70, 0.36) * 0.9;
+					} else {
+						ramp = wp.y < eave ? RAMP_SNOW : RAMP_PLANK;
+						level = wp.y < eave ? 1 + int(grain * 2.0) : 9;
+						col = wp.y < eave ? vec3(0.16, 0.17, 0.26) : vec3(0.24, 0.26, 0.40);
+					}
 				}
 			}
 		}
@@ -494,6 +526,21 @@ void fragment() {
 
 	float vignette = smoothstep(1.2, 0.35, length((center / screen_px - 0.5) * vec2(1.4, 1.25)));
 	col *= mix(0.4, 1.0, vignette) * (1.0 - fade);
+
+	if (outro > 0.0) {
+		float r = length((center - screen_px * 0.5) / screen_px.y);
+		float front = outro * 1.4;
+		if (r < front - 0.14) {
+			col = vec3(0.0);
+			under = vec3(0.0);
+			level = 0;
+		} else if (r < front) {
+			ramp = RAMP_DENSE;
+			level = 5 + int(hash21(cell + floor(time * 24.0)) * 10.0);
+			col = mix(vec3(0.95, 0.28, 0.34), vec3(0.2, 0.04, 0.06), (front - r) / 0.14);
+			under = col * 0.3;
+		}
+	}
 
 	int variant = int(hash21(cell + vec2(17.0, 5.0)) * 4.0);
 	ivec2 atlas_px = ivec2(level * 4 + variant, ramp) * ivec2(cell_px) + ivec2(sub);

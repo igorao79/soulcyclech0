@@ -51,11 +51,6 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if can_move and Input.is_action_just_pressed("switch_character_1"):
-		switch_character(0)
-	elif can_move and Input.is_action_just_pressed("switch_character_2"):
-		switch_character(1)
-
 	var direction := Vector2.ZERO
 	if can_move:
 		direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
@@ -223,10 +218,6 @@ func _install_input_actions() -> void:
 	_add_key_to_action("interact", KEY_E)
 	_add_key_to_action("interact", KEY_SPACE)
 	_add_key_to_action("interact", KEY_ENTER)
-	_add_key_to_action("switch_character_1", KEY_1)
-	_add_key_to_action("switch_character_1", KEY_KP_1)
-	_add_key_to_action("switch_character_2", KEY_2)
-	_add_key_to_action("switch_character_2", KEY_KP_2)
 
 
 func _add_key_to_action(action_name: StringName, keycode: Key) -> void:

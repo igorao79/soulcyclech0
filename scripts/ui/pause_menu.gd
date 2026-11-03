@@ -9,6 +9,8 @@ const ARCH_ART := preload("res://assets/ui/winter_arch.jpg")
 # Размер знаков рамки — как на главном экране.
 const ARCH_FONT_SIZE := 8
 const ARCH_REVEAL := 0.7
+# Закрытие быстрее открытия: рамка уходит в шум к краям, меню гаснет, потом мир оживает.
+const ARCH_HIDE := 0.4
 
 # Автозагрузка PauseMenu: Escape в игре ставит мир на паузу и открывает меню из символов.
 # Меню стоит в арке из двух зимних деревьев во весь экран (winter_arch.gdshader).
@@ -35,6 +37,8 @@ var _arch: ColorRect
 var _arch_material: ShaderMaterial
 var _time := 0.0
 var _opened_at := 0.0
+var _closing_at := -1.0
+var _after_close := Callable()
 
 
 func _ready() -> void:
@@ -109,7 +113,15 @@ func _process(delta: float) -> void:
 	_time += delta
 	_arch_material.set_shader_parameter("time", _time)
 	var t := clampf((_time - _opened_at) / ARCH_REVEAL, 0.0, 1.0)
-	_arch_material.set_shader_parameter("reveal", 1.0 - pow(1.0 - t, 3.0))
+	var shown := 1.0 - pow(1.0 - t, 3.0)
+	_root.modulate.a = clampf((_time - _opened_at) / 0.25, 0.0, 1.0)
+	if _closing_at >= 0.0:
+		var c := clampf((_time - _closing_at) / ARCH_HIDE, 0.0, 1.0)
+		shown = minf(shown, 1.0 - c * c)
+		_root.modulate.a = 1.0 - smoothstep(0.35, 1.0, c)
+		if c >= 1.0:
+			_finish_close()
+	_arch_material.set_shader_parameter("reveal", shown)
 
 
 func is_open() -> bool:
@@ -118,16 +130,35 @@ func is_open() -> bool:
 
 func open() -> void:
 	_root.show()
+	_closing_at = -1.0
+	_after_close = Callable()
 	_opened_at = _time
+	_root.modulate.a = 0.0
 	_arch_material.set_shader_parameter("reveal", 0.0)
 	_settings.hide()
 	_menu.open()
 	get_tree().paused = true
 
 
-func close() -> void:
+## Закрывает меню с анимацией; after выполняется, когда рамка ушла (мир ещё на паузе до этого).
+func close(after := Callable()) -> void:
+	if _closing_at >= 0.0:
+		return
+	_closing_at = _time
+	_after_close = after
+	# Пока рамка уходит, пункты не откликаются.
+	_menu.hide()
+	_settings.hide()
+
+
+func _finish_close() -> void:
+	_closing_at = -1.0
 	_root.hide()
 	get_tree().paused = false
+	var after := _after_close
+	_after_close = Callable()
+	if after.is_valid():
+		after.call()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -151,8 +182,7 @@ func _on_menu(id: StringName) -> void:
 			_menu.hide()
 			_settings.open()
 		&"title":
-			close()
-			get_tree().change_scene_to_file(TITLE_SCENE)
+			close(func() -> void: get_tree().change_scene_to_file(TITLE_SCENE))
 		&"quit":
 			get_tree().quit()
 

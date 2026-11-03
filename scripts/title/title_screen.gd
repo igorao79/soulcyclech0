@@ -5,6 +5,7 @@ extends Node
 # не всегда знает новые глобальные классы, и сцена падала при переходе.
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
+const SaveBook := preload("res://scripts/save/save_book.gd")
 
 # Главный экран целиком из символов: иллюстрация с двумя героями, заголовок «ЦИКЛ / ДУШ»
 # в две строки, сложенный знаками по форме Cormorant Garamond, и меню моноширинной сеткой.
@@ -39,7 +40,7 @@ var mask_label: Label
 var ui_root: Control
 var menu: AsciiMenu
 var settings_menu: AsciiMenu
-var worlds_menu: AsciiMenu
+var tomes_menu: AsciiMenu
 var title_font: Font
 var title_rect := Rect2()
 var music: AudioStreamPlayer
@@ -132,7 +133,7 @@ func _build_ui() -> void:
 	menu.spacing = 2
 	menu.center = Vector2(0.5, MENU_CENTER)
 	menu.add_button(&"chapter", "Начать путь")
-	menu.add_button(&"worlds", "Миры")
+	menu.add_button(&"saves", "Сохранения")
 	menu.add_button(&"settings", "Настройки")
 	menu.add_button(&"quit", "Выход")
 	menu.activated.connect(_on_menu)
@@ -145,20 +146,25 @@ func _build_ui() -> void:
 	settings_menu.hide()
 	ui_root.add_child(settings_menu)
 
-	# Прежние сцены отложены сюда, пока сюжет идёт главами.
-	worlds_menu = AsciiMenu.new()
-	worlds_menu.heading = "Миры"
-	worlds_menu.heading_size = 24.0
-	worlds_menu.columns = 36
-	worlds_menu.spacing = 2
-	worlds_menu.center = Vector2(0.5, MENU_CENTER - 0.02)
-	worlds_menu.add_button(&"ascii", "Ночь символов")
-	worlds_menu.add_button(&"winter", "Зимний перекрёсток")
-	worlds_menu.add_button(&"back", "Назад")
-	worlds_menu.activated.connect(_on_worlds)
-	worlds_menu.cancelled.connect(_close_worlds)
-	worlds_menu.hide()
-	ui_root.add_child(worlds_menu)
+	# Сохранения делаются сами на чекпоинтах (save_book.gd). Пока чекпоинтов нет — список пуст.
+	tomes_menu = AsciiMenu.new()
+	tomes_menu.heading = "Сохранения"
+	tomes_menu.heading_size = 24.0
+	tomes_menu.columns = 44
+	tomes_menu.spacing = 2
+	tomes_menu.center = Vector2(0.5, MENU_CENTER - 0.02)
+	var any := false
+	for tome in range(SaveBook.TOMES):
+		if not SaveBook.read(tome).is_empty():
+			tomes_menu.add_button(StringName("tome_%d" % tome), SaveBook.label(tome))
+			any = true
+	if not any:
+		tomes_menu.add_button(&"none", "сохранений пока нет")
+	tomes_menu.add_button(&"back", "Назад")
+	tomes_menu.activated.connect(_on_tomes)
+	tomes_menu.cancelled.connect(_close_tomes)
+	tomes_menu.hide()
+	ui_root.add_child(tomes_menu)
 	menu.open()
 
 
@@ -191,8 +197,8 @@ func _update_calm_rect() -> void:
 	var active := menu
 	if settings_menu.visible:
 		active = settings_menu
-	elif worlds_menu.visible:
-		active = worlds_menu
+	elif tomes_menu.visible:
+		active = tomes_menu
 	var area := title_area.merge(active.box_rect().grow(8.0))
 	screen_material.set_shader_parameter("calm_rect", Vector4(area.position.x, area.position.y, area.size.x, area.size.y))
 
@@ -218,9 +224,9 @@ func _on_menu(id: StringName) -> void:
 	match id:
 		&"chapter":
 			_start(CHAPTER_SCENE)
-		&"worlds":
+		&"saves":
 			menu.hide()
-			worlds_menu.open()
+			tomes_menu.open()
 		&"settings":
 			menu.hide()
 			settings_menu.open()
@@ -228,20 +234,23 @@ func _on_menu(id: StringName) -> void:
 			get_tree().quit()
 
 
-func _on_worlds(id: StringName) -> void:
-	match id:
-		&"ascii":
-			worlds_menu.hide()
-			_start(ASCII_SCENE)
-		&"winter":
-			worlds_menu.hide()
-			_start(MAIN_SCENE)
-		_:
-			_close_worlds()
+func _on_tomes(id: StringName) -> void:
+	if id == &"back":
+		_close_tomes()
+		return
+	if id == &"none":
+		return
+	var data := SaveBook.read(int(String(id).trim_prefix("tome_")))
+	# Пустой том открыть нечем.
+	if data.is_empty():
+		return
+	tomes_menu.hide()
+	SaveBook.resume_place = data["place"]
+	_start(CHAPTER_SCENE)
 
 
-func _close_worlds() -> void:
-	worlds_menu.hide()
+func _close_tomes() -> void:
+	tomes_menu.hide()
 	menu.open()
 
 

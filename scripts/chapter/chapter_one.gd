@@ -17,6 +17,7 @@ const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const AsciiDemo := preload("res://scripts/ascii/ascii_demo.gd")
 const LibraryScene := preload("res://scripts/chapter/library_scene.gd")
+const SaveBook := preload("res://scripts/save/save_book.gd")
 const SCREEN_SHADER := preload("res://scripts/chapter/chapter_one.gdshader")
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
 const TITLE_SCENE := "res://scenes/title.tscn"
@@ -54,6 +55,7 @@ var serif: Font
 var music: AudioStreamPlayer
 var demo: AsciiDemo
 var library: Node
+var music_tween: Tween
 
 var beat := Beat.CARD
 var beat_time := 0.0
@@ -82,6 +84,14 @@ func _ready() -> void:
 	var atlas := await FontAtlas.build(self, mono, font_size, cell)
 	_build_screen(atlas, cell)
 	drawing = true
+	# «Продолжить» с главного экрана: путь вписан в том у стола — сразу в библиотеку.
+	if SaveBook.resume_place == &"library":
+		SaveBook.resume_place = &""
+		screen_layer.queue_free()
+		screen_material = null
+		music_tween.kill()
+		music.volume_db = -26.0
+		_enter_library()
 
 
 func _process(delta: float) -> void:
@@ -180,11 +190,16 @@ func _to_library() -> void:
 	if beat_time >= TO_LIBRARY_TIME and demo != null:
 		demo.queue_free()
 		demo = null
-		library = LibraryScene.new()
-		library.finished.connect(func() -> void: _go(Beat.ENDING))
-		add_child(library)
-		curtain.color.a = 0.0
-		_go(Beat.LIBRARY)
+		_enter_library()
+
+
+func _enter_library() -> void:
+	library = LibraryScene.new()
+	library.music = music
+	library.finished.connect(func() -> void: _go(Beat.ENDING))
+	add_child(library)
+	curtain.color.a = 0.0
+	_go(Beat.LIBRARY)
 
 
 func _ending() -> void:
@@ -325,4 +340,5 @@ func _build_audio() -> void:
 	music.volume_db = -40.0
 	add_child(music)
 	music.play()
-	create_tween().tween_property(music, "volume_db", -17.0, 6.0).set_delay(1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	music_tween = create_tween()
+	music_tween.tween_property(music, "volume_db", -17.0, 6.0).set_delay(1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
