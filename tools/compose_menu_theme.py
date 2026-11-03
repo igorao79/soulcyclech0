@@ -8,7 +8,8 @@
   A2 (8 тактов)  — та же тема, шкатулка отвечает ей подголоском.
   B  (8 тактов)  — светлая середина: мягкий квадратный лид на октаву выше.
   A3 (8 тактов)  — кульминация: тема у флейты и лида вместе, струнные шире.
-  R  (4 такта)   — передышка: снова вступление, шкатулка и струнные без мелодии.
+  R  (4 такта)   — передышка: снова вступление, шкатулка и струнные без мелодии. Кульминация
+                   к ней затихает, последняя нота флейты тянется через стык, шкатулка входит тихо.
 
 Всё плавное, как вступление: ни ударных, ни отрывистого баса, ни звонких ударных нот —
 мелодию ведёт тянущийся голос без удара в начале, аккорды тихо перебирает шкатулка.
@@ -185,42 +186,59 @@ class Track:
         self.right[start:end] += part * np.sqrt(0.5 * (1 + pan))
 
 
-def place_melody(track, bars, start_bar, voice, octave_shift=0, gain=1.0, pan=0.0, swing=0.0):
+# bar_gain — громкость по тактам (динамика фразы), None — ровно.
+def place_melody(track, bars, start_bar, voice, octave_shift=0, gain=1.0, pan=0.0, swing=0.0, bar_gain=None):
     for b, bar in enumerate(bars):
         at = (start_bar + b) * BAR
+        level = gain * (bar_gain[b] if bar_gain else 1.0)
         for note, beats in bar:
             if note != "-":
                 f = freq(note) * (2.0 ** octave_shift)
                 humanize = rng.uniform(-0.008, 0.008) + swing
-                track.add(voice(f, beats * BEAT * 0.95), at + humanize, gain * rng.uniform(0.92, 1.0), pan)
+                track.add(voice(f, beats * BEAT * 0.95), at + humanize, level * rng.uniform(0.92, 1.0), pan)
             at += beats * BEAT
 
 
 # figure — громкость шкатулки: под мелодией тише, в одиночку громче.
 # ramp_from — с какой громкости шкатулка плавно сходит к figure за первые два такта.
-def place_harmony(track, chords, start_bar, figure, gain=1.0, ramp_from=None):
+def place_harmony(track, chords, start_bar, figure, gain=1.0, ramp_from=None, bar_gain=None):
     for b, (_, tones) in enumerate(chords):
         at = (start_bar + b) * BAR
+        gain_here = gain * (bar_gain[b] if bar_gain else 1.0)
         box = figure if ramp_from is None else ramp_from + (figure - ramp_from) * min((b + 0.5) / 2.0, 1.0)
         root = freq(tones[0])
-        track.add(warm_bass(root, BAR), at, 0.9 * gain, -0.05)
+        track.add(warm_bass(root, BAR), at, 0.9 * gain_here, -0.05)
         for tone in tones[1:]:
-            track.add(strings(freq(tone), BAR), at, 0.8 * gain, rng.uniform(-0.4, 0.4))
+            track.add(strings(freq(tone), BAR), at, 0.8 * gain_here, rng.uniform(-0.4, 0.4))
         # Шкатулка перебирает аккорд на две октавы выше, как во вступлении.
         order = [1, 2, 3, 2, 3, 1, 2, 3]
         for i, idx in enumerate(order):
-            track.add(music_box(freq(tones[idx]) * 4, BEAT * 0.5), at + i * BEAT * 0.5, box * gain, 0.35)
+            track.add(music_box(freq(tones[idx]) * 4, BEAT * 0.5), at + i * BEAT * 0.5, box * gain_here, 0.35)
 
 
 INTRO_BOX = 0.7
 
 
-def place_intro(track, at_bar):
+def place_intro(track, at_bar, ramp_from=None):
     """Шкатулка и струнные без мелодии. Звучит в начале и ещё раз в конце петли: перед темой
-    всегда одно и то же, поэтому её начало одинаково и после вступления, и после круга петли."""
+    всегда одно и то же, поэтому её начало одинаково и после вступления, и после круга петли.
+    ramp_from меняет только первые два такта, последние два всегда как во вступлении."""
     global rng
     rng = np.random.default_rng(77)
-    place_harmony(track, THEME_CHORDS[:4], at_bar, INTRO_BOX, 0.85)
+    place_harmony(track, THEME_CHORDS[:4], at_bar, INTRO_BOX, 0.85, ramp_from=ramp_from)
+
+
+# Кульминация затихает к концу: последние два такта уходят на спад.
+A3_DYNAMICS = [1.0, 1.0, 1.0, 1.0, 1.0, 0.95, 0.82, 0.68]
+# Тема в кульминации без последней ноты: её флейта тянет отдельно, через начало передышки.
+THEME_OPEN_END = THEME[:-1] + [[("-", 4)]]
+
+
+def held_note(f, bars):
+    """Последняя нота кульминации: флейта тянет её больше такта и медленно гаснет."""
+    tone = flute(f, bars * BAR)
+    t = np.arange(len(tone)) / len(tone)
+    return tone * np.clip(1.0 - t, 0.0, 1.0) ** 1.6
 
 
 def compose():
@@ -245,12 +263,15 @@ def compose():
         place_harmony(track, BRIDGE_CHORDS, base + 16, 0.55, 0.9)
         place_melody(track, BRIDGE, base + 16, pulse_lead, gain=1.0, pan=-0.15)
         # A3: кульминация — флейта и лид вместе, струнные шире.
-        place_harmony(track, THEME_CHORDS, base + 24, 0.32, 1.2)
-        place_melody(track, THEME, base + 24, flute, gain=1.2, pan=0.1)
-        place_melody(track, THEME, base + 24, pulse_lead, octave_shift=1, gain=0.35, pan=-0.2)
-        place_melody(track, COUNTER, base + 24, music_box, gain=0.6, pan=0.45)
+        place_harmony(track, THEME_CHORDS, base + 24, 0.32, 1.2, bar_gain=A3_DYNAMICS)
+        place_melody(track, THEME_OPEN_END, base + 24, flute, gain=1.2, pan=0.1, bar_gain=A3_DYNAMICS)
+        place_melody(track, THEME_OPEN_END, base + 24, pulse_lead, octave_shift=1, gain=0.35, pan=-0.2, bar_gain=A3_DYNAMICS)
+        place_melody(track, COUNTER, base + 24, music_box, gain=0.6, pan=0.45, bar_gain=A3_DYNAMICS)
+        # Последняя «ре» тянется через стык и гаснет, когда уже вернулось вступление.
+        track.add(held_note(freq("D5"), 1.6), (base + 31) * BAR, 1.2 * A3_DYNAMICS[-1], 0.1)
         # Передышка после кульминации — снова вступление, и круг начинается с темы.
-        place_intro(track, base + 32)
+        # Шкатулка входит в неё тихо и за два такта разгорается до громкости вступления.
+        place_intro(track, base + 32, ramp_from=0.2)
     return track
 
 
