@@ -22,6 +22,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 GameSettings="*res://scripts/ui/game_settings.gd"
 PauseMenu="*res://scripts/ui/pause_menu.gd"
+SoundDirector="*res://scripts/audio/sound_director.gd"
 
 [display]
 

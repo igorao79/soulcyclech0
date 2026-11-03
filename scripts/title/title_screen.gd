@@ -10,10 +10,13 @@ const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
 # в две строки, сложенный знаками по форме Cormorant Garamond, и меню моноширинной сеткой.
 
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
-const BellSynth := preload("res://scripts/audio/bell_synth.gd")
 const SCREEN_SHADER := preload("res://scripts/title/title_screen.gdshader")
 const ART := preload("res://assets/title/duo_moon.jpg")
-const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
+# Тема главного экрана собрана генератором tools/compose_menu_theme.py.
+const THEME_MUSIC := preload("res://assets/music/menu_theme.ogg")
+const THEME_LOOP_START := 4 * 4 * 60.0 / 84.0
+# Музыка уходит чуть дольше, чем растворяется экран: последние ноты тонут уже в темноте.
+const MUSIC_FADE := 1.6
 
 const CHAPTER_SCENE := "res://scenes/chapter_one.tscn"
 const ASCII_SCENE := "res://scenes/ascii_demo.tscn"
@@ -40,9 +43,6 @@ var worlds_menu: AsciiMenu
 var title_font: Font
 var title_rect := Rect2()
 var music: AudioStreamPlayer
-var bell_player: AudioStreamPlayer
-var bell_stream: AudioStreamWAV
-var bell_task := -1
 var elapsed := 0.0
 var outro := 0.0
 var leaving := false
@@ -57,7 +57,6 @@ func _ready() -> void:
 	var window := get_window()
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	window.title = "Цикл душ"
-	bell_task = WorkerThreadPool.add_task(func() -> void: bell_stream = BellSynth.create(0.9))
 	_build_audio()
 
 	var font := FontAtlas.create_font()
@@ -76,11 +75,6 @@ func _process(delta: float) -> void:
 	if not drawing:
 		return
 	elapsed += delta
-	if bell_task >= 0 and WorkerThreadPool.is_task_completed(bell_task):
-		WorkerThreadPool.wait_for_task_completion(bell_task)
-		bell_task = -1
-		bell_player.stream = bell_stream
-
 	screen_material.set_shader_parameter("time", elapsed)
 	screen_material.set_shader_parameter("intro", clampf(elapsed / INTRO_TIME, 0.0, 1.0))
 	screen_material.set_shader_parameter("outro", outro)
@@ -261,13 +255,14 @@ func _start(scene_path: String) -> void:
 		return
 	leaving = true
 	menu.hide()
-	if bell_player.stream != null:
-		bell_player.pitch_scale = 0.95
-		bell_player.volume_db = -10.0
-		bell_player.play()
+	# Музыка не обрывается, а уходит: гаснет и одновременно замедляется и опускается,
+	# как останавливающаяся пластинка. В этот же миг бьёт большой колокол.
+	get_node("/root/SoundDirector").toll()
 	var tween := create_tween()
 	tween.tween_property(self, "outro", 1.0, OUTRO_TIME).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_SINE)
-	tween.parallel().tween_property(music, "volume_db", -40.0, OUTRO_TIME)
+	tween.parallel().tween_property(music, "volume_db", -42.0, MUSIC_FADE).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	tween.parallel().tween_property(music, "pitch_scale", 0.78, MUSIC_FADE).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_SINE)
+	tween.tween_interval(maxf(MUSIC_FADE - OUTRO_TIME, 0.0))
 	tween.tween_callback(func() -> void:
 		# Основная игра нарисована под растяжение 960×540, ASCII-ночь настраивает окно сама.
 		if scene_path == MAIN_SCENE:
@@ -279,12 +274,11 @@ func _start(scene_path: String) -> void:
 func _build_audio() -> void:
 	var looped := THEME_MUSIC.duplicate() as AudioStreamOggVorbis
 	looped.loop = true
+	# Вступление шкатулки звучит один раз, дальше петля идёт с начала главной темы.
+	looped.loop_offset = THEME_LOOP_START
 	music = AudioStreamPlayer.new()
 	music.stream = looped
 	music.bus = &"Music"
-	music.volume_db = -14.0
+	music.volume_db = -4.0
 	add_child(music)
 	music.play()
-	bell_player = AudioStreamPlayer.new()
-	bell_player.bus = &"SFX"
-	add_child(bell_player)

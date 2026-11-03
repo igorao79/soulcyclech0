@@ -297,6 +297,8 @@ func _build_audio() -> void:
 	music = AudioStreamPlayer.new()
 	music.stream = looped
 	music.bus = &"Music"
-	music.volume_db = -17.0
+	# Глава начинается под гул колокола с главного экрана: музыка входит тихо и нарастает.
+	music.volume_db = -40.0
 	add_child(music)
 	music.play()
+	create_tween().tween_property(music, "volume_db", -17.0, 6.0).set_delay(1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)

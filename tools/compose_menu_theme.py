@@ -1,0 +1,325 @@
+"""Тема главного экрана «Цикл душ», собранная из кода.
+
+Ре минор, 84 удара в минуту. Тихая мелодичная тема в духе музыки к Undertale и Deltarune:
+простая запоминающаяся мелодия, «игрушечные» тембры и мягкая ретро-окраска.
+
+  Вступление (4 такта) — музыкальная шкатулка перебирает аккорды над тихими струнными.
+  A  (8 тактов)  — главная тема у фортепиано, треугольный бас, струнные.
+  A2 (8 тактов)  — та же тема, шкатулка отвечает ей подголоском.
+  B  (8 тактов)  — светлая середина: прямоугольный лид на октаву выше, ровный тихий пульс.
+  A3 (8 тактов)  — кульминация: тема у фортепиано и лида вместе, струнные шире.
+
+Петля — с начала A до конца A3; вступление звучит один раз. Хвост реверберации с конца петли
+перенесён в её начало, поэтому стык не слышен. В Godot петля начинается с LOOP_START секунд.
+
+Запуск: python3 tools/compose_menu_theme.py  → assets/music/menu_theme.ogg (нужны numpy и ffmpeg).
+"""
+import os
+import subprocess
+import tempfile
+import wave
+
+import numpy as np
+
+RATE = 44100
+BPM = 84.0
+BEAT = 60.0 / BPM
+BAR = BEAT * 4
+INTRO_BARS = 4
+LOOP_BARS = 32
+LOOP_START = INTRO_BARS * BAR
+rng = np.random.default_rng(1993)
+
+NOTE_INDEX = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5, "F#": 6,
+              "Gb": 6, "G": 7, "G#": 8, "Ab": 8, "A": 9, "A#": 10, "Bb": 10, "B": 11}
+
+
+def freq(name):
+    """«A4», «C#5», «Bb3» → частота в герцах."""
+    pitch, octave = name[:-1], int(name[-1])
+    midi = 12 * (octave + 1) + NOTE_INDEX[pitch]
+    return 440.0 * 2.0 ** ((midi - 69) / 12.0)
+
+
+# --- Тембры -----------------------------------------------------------------
+
+def envelope(n, attack, release, sustain_level=1.0, decay=0.0):
+    t = np.arange(n) / RATE
+    env = np.minimum(t / max(attack, 1e-4), 1.0)
+    if decay > 0:
+        env *= sustain_level + (1 - sustain_level) * np.exp(-np.maximum(t - attack, 0) / decay)
+    tail = int(release * RATE)
+    if tail > 0 and n > tail:
+        env[-tail:] *= np.linspace(1.0, 0.0, tail) ** 2
+    return env
+
+
+def piano(f, length):
+    """Фортепиано: обертоны чуть растянуты, верхние гаснут быстрее, мягкий удар молоточка."""
+    n = int((length + 1.6) * RATE)
+    t = np.arange(n) / RATE
+    out = np.zeros(n)
+    for k in range(1, 12):
+        fk = f * k * np.sqrt(1 + 0.0004 * k * k)
+        if fk > RATE * 0.45:
+            break
+        amp = 1.0 / (k ** 1.15)
+        decay = 3.2 / (1 + 0.35 * k) * (220.0 / max(f, 110.0)) ** 0.35
+        out += amp * np.sin(2 * np.pi * fk * t + rng.uniform(0, 6.28)) * np.exp(-t / decay)
+    out += 0.08 * rng.standard_normal(n) * np.exp(-t / 0.004)
+    held = int(length * RATE)
+    damp = np.ones(n)
+    damp[held:] = np.exp(-(np.arange(n - held)) / (0.18 * RATE))
+    return out * damp * np.minimum(t / 0.003, 1.0) * 0.22
+
+
+def music_box(f, length):
+    """Шкатулка: язычок звенит чистым тоном с негармоническим призвуком и гаснет."""
+    n = int((length + 1.8) * RATE)
+    t = np.arange(n) / RATE
+    tone = np.sin(2 * np.pi * f * t) + 0.35 * np.sin(2 * np.pi * f * 3.98 * t) * np.exp(-t / 0.18)
+    tone += 0.12 * np.sin(2 * np.pi * f * 2.0 * t)
+    return tone * np.exp(-t / 0.9) * np.minimum(t / 0.002, 1.0) * 0.13
+
+
+def pulse_lead(f, length, duty=0.25):
+    """Прямоугольный лид 8-битной приставки: ограниченный по полосе, с вибрато после атаки."""
+    n = int((length + 0.25) * RATE)
+    t = np.arange(n) / RATE
+    vibrato = 1 + 0.006 * np.sin(2 * np.pi * 5.2 * t) * np.clip((t - 0.25) / 0.3, 0, 1)
+    phase = 2 * np.pi * f * np.cumsum(vibrato) / RATE
+    out = np.zeros(n)
+    for k in range(1, 40):
+        if f * k > RATE * 0.42:
+            break
+        out += (2 / (np.pi * k)) * np.sin(np.pi * k * duty) * np.cos(k * phase)
+    env = envelope(n, 0.01, 0.12, sustain_level=0.7, decay=0.35)
+    return out * env * 0.085
+
+
+def triangle_bass(f, length):
+    n = int((length + 0.1) * RATE)
+    t = np.arange(n) / RATE
+    out = np.zeros(n)
+    for i, k in enumerate(range(1, 16, 2)):
+        out += ((-1) ** i) / (k * k) * np.sin(2 * np.pi * f * k * t)
+    return out * envelope(n, 0.008, 0.08, 0.85, 0.6) * 0.30
+
+
+def strings(f, length):
+    """Струнные: три расстроенные пилы с завалом верхов, медленная атака, лёгкое тремоло."""
+    n = int((length + 0.9) * RATE)
+    t = np.arange(n) / RATE
+    out = np.zeros(n)
+    for detune in (-0.0045, 0.0, 0.0052):
+        fd = f * (1 + detune)
+        for k in range(1, 14):
+            if fd * k > 6000:
+                break
+            out += np.sin(2 * np.pi * fd * k * t + rng.uniform(0, 6.28)) / (k ** 1.45)
+    tremolo = 1 + 0.05 * np.sin(2 * np.pi * 4.6 * t)
+    return out * tremolo * envelope(n, 0.45, 0.8) * 0.035
+
+
+def soft_kick(length=0.4):
+    n = int(length * RATE)
+    t = np.arange(n) / RATE
+    sweep = 2 * np.pi * np.cumsum(48 + 70 * np.exp(-t / 0.03)) / RATE
+    return np.sin(sweep) * np.exp(-t / 0.12) * 0.32
+
+
+def shaker(length=0.09):
+    n = int(length * RATE)
+    noise = rng.standard_normal(n)
+    noise = np.diff(noise, prepend=0.0)  # срез низов: остаётся шорох
+    return noise * np.exp(-np.arange(n) / RATE / 0.025) * 0.025
+
+
+# --- Партитура ---------------------------------------------------------------
+# Ноты — (высота, длительность в долях). «-» — пауза.
+
+THEME = [
+    [("A4", 1), ("D5", 1), ("E5", 1), ("F5", 1)],
+    [("E5", 3), ("D5", 1)],
+    [("C5", 1), ("A4", 1), ("C5", 1), ("F5", 1)],
+    [("E5", 4)],
+    [("D5", 1), ("Bb4", 1), ("D5", 1), ("G5", 1)],
+    [("F5", 2), ("E5", 1), ("D5", 1)],
+    [("C#5", 1), ("E5", 1), ("A5", 2)],
+    [("D5", 4)],
+]
+THEME_CHORDS = [
+    ("D", ["D3", "A3", "D4", "F4"]), ("Bb", ["Bb2", "F3", "Bb3", "D4"]),
+    ("F", ["F2", "C3", "F3", "A3"]), ("C", ["C3", "G3", "C4", "E4"]),
+    ("Gm", ["G2", "D3", "G3", "Bb3"]), ("Dm", ["D3", "A3", "D4", "F4"]),
+    ("A", ["A2", "E3", "A3", "C#4"]), ("Dm", ["D3", "A3", "D4", "F4"]),
+]
+BRIDGE = [
+    [("F5", 1), ("A5", 1), ("Bb5", 2)],
+    [("C6", 1), ("Bb5", 1), ("A5", 2)],
+    [("A5", 1), ("G5", 1), ("E5", 1), ("C5", 1)],
+    [("D5", 3), ("F5", 1)],
+    [("G5", 1), ("Bb5", 1), ("D6", 2)],
+    [("C#6", 1), ("Bb5", 1), ("A5", 1), ("G5", 1)],
+    [("F5", 1), ("E5", 1), ("D5", 1), ("E5", 1)],
+    [("E5", 2), ("C#5", 2)],
+]
+BRIDGE_CHORDS = [
+    ("Bb", ["Bb2", "F3", "Bb3", "D4"]), ("C", ["C3", "G3", "C4", "E4"]),
+    ("Am", ["A2", "E3", "A3", "C4"]), ("Dm", ["D3", "A3", "D4", "F4"]),
+    ("Gm", ["G2", "D3", "G3", "Bb3"]), ("A", ["A2", "E3", "A3", "C#4"]),
+    ("Dm", ["D3", "A3", "D4", "F4"]), ("A", ["A2", "E3", "A3", "C#4"]),
+]
+# Подголосок шкатулки во второй теме: отвечает мелодии в паузах между фразами.
+COUNTER = [
+    [("-", 2), ("A5", 1), ("D6", 1)],
+    [("-", 2), ("F5", 1), ("D5", 1)],
+    [("-", 2), ("A5", 1), ("C6", 1)],
+    [("G5", 1), ("E5", 1), ("C5", 1), ("E5", 1)],
+    [("-", 2), ("Bb5", 1), ("G5", 1)],
+    [("-", 2), ("A5", 1), ("F5", 1)],
+    [("E5", 1), ("G5", 1), ("C#6", 1), ("E6", 1)],
+    [("D6", 2), ("A5", 2)],
+]
+
+
+class Track:
+    def __init__(self, seconds):
+        self.left = np.zeros(int(seconds * RATE) + RATE * 4)
+        self.right = np.zeros_like(self.left)
+
+    def add(self, signal, at, gain=1.0, pan=0.0):
+        start = int(at * RATE)
+        end = min(start + len(signal), len(self.left))
+        part = signal[: end - start] * gain
+        self.left[start:end] += part * np.sqrt(0.5 * (1 - pan))
+        self.right[start:end] += part * np.sqrt(0.5 * (1 + pan))
+
+
+def place_melody(track, bars, start_bar, voice, octave_shift=0, gain=1.0, pan=0.0, swing=0.0):
+    for b, bar in enumerate(bars):
+        at = (start_bar + b) * BAR
+        for note, beats in bar:
+            if note != "-":
+                f = freq(note) * (2.0 ** octave_shift)
+                humanize = rng.uniform(-0.008, 0.008) + swing
+                track.add(voice(f, beats * BEAT * 0.95), at + humanize, gain * rng.uniform(0.92, 1.0), pan)
+            at += beats * BEAT
+
+
+def place_harmony(track, chords, start_bar, figure, gain=1.0):
+    for b, (_, tones) in enumerate(chords):
+        at = (start_bar + b) * BAR
+        root = freq(tones[0])
+        track.add(triangle_bass(root, BAR * 0.98), at, 0.9 * gain, -0.05)
+        for tone in tones[1:]:
+            track.add(strings(freq(tone), BAR), at, 0.8 * gain, rng.uniform(-0.4, 0.4))
+        if figure == "piano":
+            # Левая рука: ломаный аккорд восьмыми — бас, квинта, октава, терция, обратно.
+            order = [0, 1, 2, 3, 2, 1, 2, 3]
+            for i, idx in enumerate(order):
+                track.add(piano(freq(tones[idx]), BEAT * 0.5), at + i * BEAT * 0.5, 0.55 * gain, -0.25)
+        elif figure == "box":
+            # Шкатулка перебирает аккорд на две октавы выше.
+            order = [1, 2, 3, 2, 3, 1, 2, 3]
+            for i, idx in enumerate(order):
+                track.add(music_box(freq(tones[idx]) * 4, BEAT * 0.5), at + i * BEAT * 0.5, 0.7 * gain, 0.35)
+
+
+def place_pulse(track, start_bar, bars):
+    for b in range(bars):
+        for beat in range(4):
+            at = (start_bar + b) * BAR + beat * BEAT
+            if beat in (0, 2):
+                track.add(soft_kick(), at, 0.8)
+            track.add(shaker(), at + BEAT * 0.5, 1.0, 0.3)
+
+
+def compose():
+    total_bars = INTRO_BARS + LOOP_BARS * 2
+    track = Track(total_bars * BAR)
+    place_harmony(track, THEME_CHORDS[:4], 0, "box", 0.85)
+    global rng
+    for cycle in range(2):
+        # Оба прохода петли играются одинаково до сэмпла: тогда хвосты нот с конца петли
+        # в точности совпадают с теми, что звучат в её начале, и на стыке нет щелчка.
+        rng = np.random.default_rng(2024)
+        base = INTRO_BARS + cycle * LOOP_BARS
+        # A: тема у фортепиано.
+        place_harmony(track, THEME_CHORDS, base, "piano")
+        place_melody(track, THEME, base, piano, gain=1.25, pan=0.1)
+        # A2: та же тема, шкатулка отвечает подголоском.
+        place_harmony(track, THEME_CHORDS, base + 8, "piano")
+        place_melody(track, THEME, base + 8, piano, gain=1.2, pan=0.1)
+        place_melody(track, COUNTER, base + 8, music_box, gain=0.9, pan=0.45)
+        # B: светлая середина у прямоугольного лида, тихий пульс.
+        place_harmony(track, BRIDGE_CHORDS, base + 16, "box", 0.9)
+        place_melody(track, BRIDGE, base + 16, pulse_lead, gain=1.0, pan=-0.15)
+        place_pulse(track, base + 16, 8)
+        # A3: кульминация — фортепиано и лид вместе, струнные шире.
+        place_harmony(track, THEME_CHORDS, base + 24, "piano", 1.2)
+        place_melody(track, THEME, base + 24, piano, gain=1.3, pan=0.1)
+        place_melody(track, THEME, base + 24, pulse_lead, octave_shift=1, gain=0.55, pan=-0.2)
+        place_melody(track, COUNTER, base + 24, music_box, gain=0.6, pan=0.45)
+    return track
+
+
+# --- Пространство и сведение -------------------------------------------------
+
+def reverb(signal, seconds=2.6, seed=0):
+    """Свёртка с синтетическим залом: экспоненциально гаснущий шум с ранними отражениями."""
+    gen = np.random.default_rng(seed)
+    n = int(seconds * RATE)
+    t = np.arange(n) / RATE
+    ir = gen.standard_normal(n) * np.exp(-t / (seconds / 6.9)) * (1 - np.exp(-t / 0.012))
+    for delay, amp in ((0.011, 0.6), (0.019, 0.45), (0.031, 0.35), (0.047, 0.25)):
+        ir[int(delay * RATE)] += amp
+    # Тёмный зал: высокие гаснут быстрее.
+    kernel = np.ones(9) / 9.0
+    ir = np.convolve(ir, kernel, mode="same")
+    ir /= np.sqrt(np.sum(ir ** 2))
+    size = 1 << int(np.ceil(np.log2(len(signal) + n)))
+    out = np.fft.irfft(np.fft.rfft(signal, size) * np.fft.rfft(ir, size), size)
+    return out[: len(signal)]
+
+
+def master(track):
+    wet_l = reverb(track.left, seed=1)
+    wet_r = reverb(track.right, seed=2)
+    left = track.left * 0.78 + wet_l * 0.34
+    right = track.right * 0.78 + wet_r * 0.34
+    # Мягкое ограничение пиков, без резкого клиппинга.
+    peak = max(np.max(np.abs(left)), np.max(np.abs(right)))
+    left, right = left / peak * 1.25, right / peak * 1.25
+    left, right = np.tanh(left), np.tanh(right)
+    peak = max(np.max(np.abs(left)), np.max(np.abs(right)))
+    return left / peak * 0.89, right / peak * 0.89
+
+
+def main():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out_path = os.path.join(root, "assets", "music", "menu_theme.ogg")
+    left, right = master(compose())
+    # Вступление + вторая петля: в неё уже входит хвост реверберации от первой, стык не слышен.
+    intro_end = int(LOOP_START * RATE)
+    loop_len = int(LOOP_BARS * BAR * RATE)
+    second = intro_end + loop_len
+    pick = np.r_[0:intro_end, second:second + loop_len]
+    left, right = left[pick], right[pick]
+    pcm = (np.stack([left, right], axis=1) * 32767).astype(np.int16)
+    with tempfile.TemporaryDirectory() as tmp:
+        wav_path = os.path.join(tmp, "theme.wav")
+        with wave.open(wav_path, "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(RATE)
+            wav.writeframes(pcm.tobytes())
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-i", wav_path, "-c:a", "libvorbis", "-q:a", "6", out_path],
+            check=True,
+        )
+    print("%s: %.1f s, loop from %.3f s" % (out_path, len(left) / RATE, LOOP_START))
+
+
+if __name__ == "__main__":
+    main()
