@@ -10,6 +10,9 @@ signal activated(id: StringName)
 
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const SHADER := preload("res://scripts/ui/glyph_text.gdshader")
+const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
+# Знаки книги мельче, чем у мира: так и названия томов складываются из знаков и читаются.
+const FINE_FONT_SIZE := 5
 
 const NORMAL := Color(1.0, 0.0, 0.0)
 const HOT := Color(0.0, 1.0, 0.0)
@@ -35,6 +38,7 @@ var _mask: SubViewport
 var _mask_canvas: Control
 var _plain: Control
 var _plain_font: Font
+var _name_font: Font
 var _material: ShaderMaterial
 var _time := 0.0
 var _opened_at := 0.0
@@ -47,6 +51,7 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_font = UiStyle.serif(700.0)
+	_name_font = UiStyle.serif(600.0)
 	_mask = SubViewport.new()
 	_mask.transparent_bg = true
 	_mask.disable_3d = true
@@ -61,6 +66,7 @@ func _ready() -> void:
 	_material.set_shader_parameter("cell_px", Vector2(cell))
 	_material.set_shader_parameter("mask_tex", _mask.get_texture())
 	material = _material
+	_build_fine_atlas()
 	_plain_font = UiStyle.serif(500.0)
 	_plain = Control.new()
 	_plain.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -68,6 +74,15 @@ func _ready() -> void:
 	add_child(_plain)
 	resized.connect(_layout)
 	_layout()
+
+
+func _build_fine_atlas() -> void:
+	var mono := FontAtlas.create_font()
+	var size := maxi(roundi(FINE_FONT_SIZE * DisplayServer.screen_get_scale()), 4)
+	var fine_cell := FontAtlas.measure_cell(mono, size)
+	var fine := await FontAtlas.build(self, mono, size, fine_cell)
+	_material.set_shader_parameter("atlas_tex", fine)
+	_material.set_shader_parameter("cell_px", Vector2(fine_cell))
 
 
 func open() -> void:
@@ -100,7 +115,7 @@ func _layout() -> void:
 	var y := size.y * (center.y - 0.22)
 	_lines.append({"text": "Цикл душ", "kind": NORMAL, "size": roundi(cap * 0.1), "y": y, "x": x, "id": &"", "name": ""})
 	y += size.y * 0.16
-	var numeral_x := x - size.y * 0.2
+	var numeral_x := x - size.y * 0.24
 	for index in range(tomes.size()):
 		var tome: Dictionary = tomes[index]
 		var written: bool = tome["title"] != ""
@@ -118,7 +133,7 @@ func _layout() -> void:
 			_rows.append(Rect2(numeral_x - size.y * 0.08, line["y"] - size.y * 0.075, size.y * 0.6, size.y * 0.1))
 	var top: float = _lines[0]["y"] - size.y * 0.1
 	var bottom: float = _lines[-1]["y"] + size.y * 0.05
-	var half := size.y * 0.42
+	var half := size.y * 0.55
 	_material.set_shader_parameter("screen_px", size)
 	_material.set_shader_parameter("calm_rect", Vector4(x - half, top - 20.0, half * 2.0, bottom - top + 40.0))
 
@@ -138,6 +153,28 @@ func _draw_mask() -> void:
 		_font.draw_string_outline(_mask_canvas.get_canvas_item(), at, line["text"], HORIZONTAL_ALIGNMENT_LEFT, -1,
 			line["size"], outline, kind)
 		_font.draw_string(_mask_canvas.get_canvas_item(), at, line["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, line["size"], kind)
+	# Названия томов и «закрыть книгу» — тоже знаками, тем же шрифтом, что заголовок.
+	var size := get_rect().size
+	var name_size := roundi(size.y / UiStyle.SERIF_CAP * 0.062)
+	var tracking := name_size * 0.12
+	for line in _lines:
+		if line["name"] == "":
+			continue
+		var kind: Color = line["kind"]
+		if line["id"] != &"" and ids.find(line["id"]) == selected:
+			kind = HOT
+		var text: String = line["name"]
+		var at := Vector2(line["x"] + size.y * 0.075, line["y"] - size.y * 0.012)
+		if line["id"] == &"close":
+			var w := 0.0
+			for i in range(text.length()):
+				w += _name_font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x + tracking
+			at = Vector2(size.x * center.x - (w - tracking) * 0.5, line["y"])
+		# Строчные вразрядку: между буквами просвет хотя бы в знак, иначе они слипаются.
+		for i in range(text.length()):
+			var letter := text[i]
+			_name_font.draw_string(_mask_canvas.get_canvas_item(), at.floor(), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, name_size, kind)
+			at.x += _name_font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x + tracking
 
 
 # Названия томов антиквой вразрядку: проступают из шума вслед за цифрами.
@@ -167,21 +204,9 @@ func _draw_plain() -> void:
 				width += _plain_font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x + tracking
 			x = size.x * center.x - width * 0.5
 			y = line["y"]
-		var settle := clampf((since - 0.9 - index * 0.15) / 0.5, 0.0, 1.0)
-		var shown := int(settle * text.length())
-		for i in range(text.length()):
-			var letter := text[i]
-			var step := _plain_font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, name_size).x + tracking
-			if i < shown or letter == " ":
-				_plain_font.draw_string(_plain.get_canvas_item(), Vector2(x, y).floor(), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, name_size, color)
-			elif i < shown + 3:
-				var noise := SCRAMBLE[(i * 7 + int(_time * 24.0)) % SCRAMBLE.length()]
-				_plain_font.draw_string(_plain.get_canvas_item(), Vector2(x, y).floor(), noise, HORIZONTAL_ALIGNMENT_LEFT, -1,
-					name_size, Color(NOISE, fade))
-			x += step
 		if is_selected:
 			# Ромб-огонёк перед выбранной строкой.
-			var mid := Vector2((line["x"] - size.y * 0.06) if line["id"] != &"close" else size.x * center.x - size.y * 0.16, y - name_size * 0.3)
+			var mid := Vector2((line["x"] - size.y * 0.06) if line["id"] != &"close" else size.x * center.x - size.y * 0.2, y - name_size * 0.3)
 			var tip := name_size * 0.18 * (0.85 + 0.15 * sin(_time * 6.0))
 			_plain.draw_colored_polygon(PackedVector2Array([
 				mid + Vector2(0, -tip), mid + Vector2(tip, 0), mid + Vector2(0, tip), mid + Vector2(-tip, 0)

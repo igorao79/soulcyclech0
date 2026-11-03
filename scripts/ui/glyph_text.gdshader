@@ -109,10 +109,10 @@ void fragment() {
 	if (cover > 0.5) {
 		glyph = true;
 		ramp = RAMP_DENSE;
-		level = clamp(10 + int(heat * 5.0), 10, 15);
+		level = clamp(13 + int(heat * 3.0), 13, 15);
 		col = mix(silver, lilac, smoothstep(0.35, 0.95, heat) * 0.6);
 		if (hot) {
-			level = clamp(12 + int(heat * 4.0), 12, 15);
+			level = clamp(13 + int(heat * 3.0), 13, 15);
 			col = mix(bone, ember, smoothstep(0.35, 0.95, heat) * 0.75) * (0.9 + 0.15 * sin(time * 4.0));
 		}
 	} else if (cover > 0.1) {
@@ -123,7 +123,7 @@ void fragment() {
 		level = int(floor(fract(atan(gy, gx) / PI + 1.0 / 8.0) * 4.0));
 		col = mix(vec3(0.62, 0.68, 1.0), vec3(1.0), heat) * 1.35;
 		if (hot) {
-			col = mix(vec3(0.78, 0.10, 0.16), ember, heat) * 1.3;
+			col = mix(vec3(1.0, 0.42, 0.22), vec3(1.0, 0.80, 0.55), heat) * 1.2;
 		}
 	} else if (calm > 0.3) {
 		// Над выбранным пунктом поднимаются угли, над остальным — иней.
@@ -140,7 +140,7 @@ void fragment() {
 		}
 	}
 	if (dim && glyph) {
-		col = vec3(0.40, 0.42, 0.58) * (ramp == RAMP_EDGE ? 1.0 : 0.8);
+		col = vec3(0.56, 0.60, 0.78) * (ramp == RAMP_EDGE ? 1.0 : 0.9);
 	}
 
 	// Расшифровка из шума: каждая ячейка встаёт на место в свой момент.
@@ -155,7 +155,7 @@ void fragment() {
 	ivec2 atlas_px = ivec2(level * 4 + variant, ramp) * ivec2(cell_px) + ivec2(sub);
 	float coverage = glyph ? texelFetch(atlas_tex, atlas_px, 0).r : 0.0;
 	// Под телом буквы — подложка её же цвета, чтобы буква читалась массой.
-	float backing = glyph && cover > 0.5 ? 0.6 : 0.0;
+	float backing = glyph && cover > 0.5 ? 0.82 : 0.0;
 	vec3 rgb = mix(col * backing, col * 1.2 + vec3(0.01), coverage);
 	float alpha = max(coverage, backing) * fade;
 	COLOR = vec4(mix(veil.rgb, rgb, alpha), max(veil.a, alpha));

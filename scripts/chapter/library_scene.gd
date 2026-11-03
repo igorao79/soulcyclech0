@@ -299,7 +299,7 @@ func _open_save_menu() -> void:
 	save_menu.atlas = glyph_atlas
 	save_menu.cell = glyph_cell
 	# Слева, над пустой тьмой: справа парит двойник.
-	save_menu.center = Vector2(0.27, 0.5)
+	save_menu.center = Vector2(0.29, 0.5)
 	save_menu.tomes = VOLUMES
 	save_menu.activated.connect(_on_save_menu)
 	overlay.get_parent().add_child(save_menu)
