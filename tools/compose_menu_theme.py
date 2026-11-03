@@ -4,13 +4,13 @@
 простая запоминающаяся мелодия, «игрушечные» тембры и мягкая ретро-окраска.
 
   Вступление (4 такта) — музыкальная шкатулка перебирает аккорды над тихими струнными.
-  A  (8 тактов)  — главная тема у фортепиано над шкатулкой, тянущимся басом и струнными.
+  A  (8 тактов)  — главная тема у мягкой флейты над шкатулкой, тянущимся басом и струнными.
   A2 (8 тактов)  — та же тема, шкатулка отвечает ей подголоском.
   B  (8 тактов)  — светлая середина: мягкий квадратный лид на октаву выше.
-  A3 (8 тактов)  — кульминация: тема у фортепиано и лида вместе, струнные шире.
+  A3 (8 тактов)  — кульминация: тема у флейты и лида вместе, струнные шире.
 
-Всё плавное, как вступление: ни ударных, ни отрывистого баса, ни аккомпанемента восьмушками
-у фортепиано — оно ведёт только мелодию, аккорды перебирает шкатулка.
+Всё плавное, как вступление: ни ударных, ни отрывистого баса, ни звонких ударных нот —
+мелодию ведёт тянущийся голос без удара в начале, аккорды тихо перебирает шкатулка.
 
 Петля — с начала A до конца A3; вступление звучит один раз. Хвост реверберации с конца петли
 перенесён в её начало, поэтому стык не слышен. В Godot петля начинается с LOOP_START секунд.
@@ -57,22 +57,21 @@ def envelope(n, attack, release, sustain_level=1.0, decay=0.0):
     return env
 
 
-def piano(f, length):
-    """Фортепиано: обертоны чуть растянуты, верхние гаснут быстрее, мягкий удар молоточка."""
-    n = int((length + 1.6) * RATE)
+def flute(f, length):
+    """Мягкий тянущийся голос мелодии: тёплый тон с дыханием и вибрато, без удара в начале.
+    Нота плавно входит и плавно уходит, поэтому соседние ноты переливаются одна в другую."""
+    n = int((length + 0.45) * RATE)
     t = np.arange(n) / RATE
-    out = np.zeros(n)
-    for k in range(1, 12):
-        fk = f * k * np.sqrt(1 + 0.0004 * k * k)
-        if fk > RATE * 0.45:
-            break
-        amp = 1.0 / (k ** 1.15)
-        decay = 3.2 / (1 + 0.35 * k) * (220.0 / max(f, 110.0)) ** 0.35
-        out += amp * np.sin(2 * np.pi * fk * t + rng.uniform(0, 6.28)) * np.exp(-t / decay)
-    held = int(length * RATE)
-    damp = np.ones(n)
-    damp[held:] = np.exp(-(np.arange(n - held)) / (0.18 * RATE))
-    return out * damp * np.minimum(t / 0.012, 1.0) * 0.22
+    vibrato = 1 + 0.004 * np.sin(2 * np.pi * 4.8 * t + rng.uniform(0, 6.28)) * np.clip((t - 0.2) / 0.4, 0, 1)
+    phase = 2 * np.pi * f * np.cumsum(vibrato) / RATE
+    tone = np.sin(phase) + 0.22 * np.sin(2 * phase) + 0.07 * np.sin(3 * phase)
+    breath = rng.standard_normal(n)
+    breath = np.convolve(breath, np.ones(24) / 24, mode="same") * 0.05
+    held = length
+    env = np.clip(t / 0.14, 0, 1) ** 1.5
+    env *= np.where(t < held, 1.0, np.exp(-(t - held) / 0.16))
+    env *= 0.92 + 0.08 * np.exp(-t / 0.5)
+    return (tone + breath) * env * 0.16
 
 
 def music_box(f, length):
@@ -218,20 +217,20 @@ def compose():
         # в точности совпадают с теми, что звучат в её начале, и на стыке нет щелчка.
         rng = np.random.default_rng(2024)
         base = INTRO_BARS + cycle * LOOP_BARS
-        # A: тема у фортепиано.
+        # A: тема у флейты.
         # Тема входит тихо, сразу за вступлением, без скачка громкости; дальше всё нарастает.
-        place_harmony(track, THEME_CHORDS, base, 0.5, 0.85)
-        place_melody(track, THEME, base, piano, gain=0.85, pan=0.1)
+        place_harmony(track, THEME_CHORDS, base, 0.32, 0.85)
+        place_melody(track, THEME, base, flute, gain=0.85, pan=0.1)
         # A2: та же тема, шкатулка отвечает подголоском.
-        place_harmony(track, THEME_CHORDS, base + 8, 0.4, 0.95)
-        place_melody(track, THEME, base + 8, piano, gain=1.0, pan=0.1)
+        place_harmony(track, THEME_CHORDS, base + 8, 0.28, 0.95)
+        place_melody(track, THEME, base + 8, flute, gain=1.0, pan=0.1)
         place_melody(track, COUNTER, base + 8, music_box, gain=0.9, pan=0.45)
         # B: светлая середина у мягкого квадратного лида.
         place_harmony(track, BRIDGE_CHORDS, base + 16, 0.55, 0.9)
         place_melody(track, BRIDGE, base + 16, pulse_lead, gain=1.0, pan=-0.15)
-        # A3: кульминация — фортепиано и лид вместе, струнные шире.
-        place_harmony(track, THEME_CHORDS, base + 24, 0.45, 1.2)
-        place_melody(track, THEME, base + 24, piano, gain=1.3, pan=0.1)
+        # A3: кульминация — флейта и лид вместе, струнные шире.
+        place_harmony(track, THEME_CHORDS, base + 24, 0.32, 1.2)
+        place_melody(track, THEME, base + 24, flute, gain=1.2, pan=0.1)
         place_melody(track, THEME, base + 24, pulse_lead, octave_shift=1, gain=0.35, pan=-0.2)
         place_melody(track, COUNTER, base + 24, music_box, gain=0.6, pan=0.45)
     return track
