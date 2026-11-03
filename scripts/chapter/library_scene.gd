@@ -17,7 +17,7 @@ signal finished
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const DialogueView := preload("res://scripts/ui/dialogue_view.gd")
-const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
+const TomeBook := preload("res://scripts/ui/tome_book.gd")
 const LIBRARY_SHADER := preload("res://scripts/chapter/library.gdshader")
 const VISION_SHADER := preload("res://scripts/chapter/vision.gdshader")
 const VISION_ART := preload("res://assets/chapter/vision.jpg")
@@ -49,7 +49,11 @@ const SIT_TIME := 1.3
 const OUTRO_TIME := 1.1
 const MUSIC_FADE := 2.5
 # Оглавление книги: вписан только первый том.
-const VOLUMES: Array[String] = ["Том первый. Звездопад", "Том второй. страницы пусты", "Том третий. страницы пусты"]
+const VOLUMES: Array[Dictionary] = [
+	{"numeral": "I", "title": "Звездопад"},
+	{"numeral": "II", "title": ""},
+	{"numeral": "III", "title": ""},
+]
 # Взгляд вправо и чуть на зрителя; за столом — строго на столешницу.
 const FACE_RIGHT := PI * 0.5 - 0.4
 const FACE_LEFT := -PI * 0.5 + 0.4
@@ -100,7 +104,9 @@ var vision_fade := 0.0
 var outro := 0.0
 ## Музыка главы: глава отдаёт её сюда, чтобы она стихла, когда герой сядет за стол.
 var music: AudioStreamPlayer
-var save_menu: AsciiMenu
+var save_menu: TomeBook
+var glyph_atlas: Texture2D
+var glyph_cell := Vector2i(5, 8)
 var vision_music: AudioStreamPlayer
 
 var lines: Array = []
@@ -121,6 +127,8 @@ func _ready() -> void:
 
 
 func _build(atlas: Texture2D, cell: Vector2i) -> void:
+	glyph_atlas = atlas
+	glyph_cell = cell
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	library_material = ShaderMaterial.new()
@@ -287,20 +295,15 @@ func _vision() -> void:
 
 # Книга «Цикл душ» раскрыта над тьмой: названия томов и единственный выход — закрыть её.
 func _open_save_menu() -> void:
-	save_menu = AsciiMenu.new()
-	save_menu.heading = "Цикл душ"
-	save_menu.heading_size = 30.0
-	save_menu.columns = 42
-	save_menu.spacing = 2
+	save_menu = TomeBook.new()
+	save_menu.atlas = glyph_atlas
+	save_menu.cell = glyph_cell
 	# Слева, над пустой тьмой: справа парит двойник.
-	save_menu.center = Vector2(0.27, 0.52)
-	for index in range(VOLUMES.size()):
-		save_menu.add_button(StringName("volume_%d" % index), VOLUMES[index])
-	save_menu.add_button(&"close", "закрыть книгу")
+	save_menu.center = Vector2(0.27, 0.5)
+	save_menu.tomes = VOLUMES
 	save_menu.activated.connect(_on_save_menu)
 	overlay.get_parent().add_child(save_menu)
 	save_menu.open()
-	save_menu.selected = save_menu.entries.size() - 1
 
 
 func _on_save_menu(id: StringName) -> void:
@@ -410,7 +413,7 @@ func _draw_overlay() -> void:
 	if vision_fade > 0.0:
 		overlay.draw_rect(overlay.get_rect(), Color(0.0, 0.0, 0.01, vision_fade))
 		if save_menu != null:
-			save_menu.modulate.a = 1.0 - vision_fade
+			save_menu.fade = 1.0 - vision_fade
 
 
 func _ensure_actions() -> void:
