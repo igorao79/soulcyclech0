@@ -264,6 +264,8 @@ func _push_static_uniforms() -> void:
 	_set_scene_parameter("world_size", AsciiWorld.SIZE)
 	_set_scene_parameter("ruins_on", 1.0 if world.layout == &"crossroads" else 0.0)
 	_set_scene_parameter("sea_on", 1.0 if world.island else 0.0)
+	_set_scene_parameter("day_on", 1.0 if world.layout == &"temple_yard" else 0.0)
+	_set_scene_parameter("warrior_on", 1.0 if world.layout == &"temple_yard" else 0.0)
 	_set_scene_parameter("cam_sin", sin(CAMERA_TILT))
 	_set_scene_parameter("cam_cos", cos(CAMERA_TILT))
 	_set_scene_parameter("keeper_pos", _far_or_ground(world.keeper))
@@ -308,7 +310,8 @@ func _push_uniforms() -> void:
 	_set_scene_parameter("player_move", player_move)
 	_set_scene_parameter("player_lean", player_lean)
 	_set_scene_parameter("coat_lag", coat_lag)
-	_set_scene_parameter("player_style", character_index)
+	# Во дворе храма герой — молодой Дэйл, а не один из двух обычных персонажей.
+	_set_scene_parameter("player_style", 2 if world.layout == &"temple_yard" else character_index)
 	_set_scene_parameter("bell_swing", bell_angle)
 	_set_scene_parameter("tolls", float(toll_count))
 	_set_scene_parameter("wraith_on", 1.0 if seen_flower else 0.0)
@@ -616,10 +619,23 @@ func _update_hud() -> void:
 	hud.queue_redraw()
 
 
+## Воин идёт сам: его двигает глава, а движок только рисует и не даёт пройти сквозь него.
+func set_warrior(point: Vector2, yaw: float, phase: float, walk: float) -> void:
+	world.keeper = point
+	_set_scene_parameter("keeper_pos", _ground_point(point))
+	_set_scene_parameter("keeper_yaw", yaw)
+	_set_scene_parameter("warrior_phase", phase)
+	_set_scene_parameter("warrior_walk", walk)
+
+
 func _apply_speaker(speaker: StringName) -> void:
 	if speaker == &"wraith":
 		hud.dialogue_speaker = BELL_WRAITH.display_name
 		hud.dialogue_color = BELL_WRAITH.accent_color
+		return
+	if speaker == &"warrior":
+		hud.dialogue_speaker = "Воин"
+		hud.dialogue_color = Color(0.78, 0.82, 0.92)
 		return
 	var is_player := speaker == &"" or speaker == &"nameless" or speaker == &"wanderer"
 	var profile: CharacterProfile = (

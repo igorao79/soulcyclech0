@@ -87,7 +87,13 @@ void shade_ground(vec3 p, vec3 rd, vec2 wc, float shadow, out vec3 col, out int 
 			level = 5 + int(cell_hash * 3.0);
 			return;
 		}
-		if (is_garden) {
+		if (day_on > 0.5) {
+			// Днём тропа — светлые каменные плиты, стыки темнее самих плит.
+			vec2 slab = vec2(p.x / 1.1 + floor(p.z / 0.7) * 0.5, p.z / 0.7);
+			bool joint = fract(slab.x) < 0.09 || fract(slab.y) < 0.14;
+			col = vec3(0.86, 0.72, 0.48) * (joint ? 0.42 : 0.72 + 0.28 * fine) * min(light * 0.6 + vec3(0.45), vec3(1.15));
+			level = joint ? 2 : 9 + int(cell_hash * 5.0);
+		} else if (is_garden) {
 			float lum = dot(col, vec3(0.3, 0.55, 0.15));
 			level = int(clamp(lum * 7.0 + fine * 7.0 + cell_hash * 5.0 - 4.5, 0.0, 15.0));
 		} else {

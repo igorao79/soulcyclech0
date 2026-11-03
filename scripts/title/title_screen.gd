@@ -211,7 +211,7 @@ func _update_calm_rect() -> void:
 func _skip_to_game() -> bool:
 	var args := OS.get_cmdline_user_args()
 	var target := ""
-	if "--chapter-two" in args:
+	if "--chapter-two" in args or "--temple-yard" in args:
 		target = "res://scenes/chapter_two.tscn"
 	elif "--chapter" in args:
 		target = CHAPTER_SCENE

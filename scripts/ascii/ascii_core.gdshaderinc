@@ -21,7 +21,12 @@ float scene_static(vec3 p, bool reflected, inout int m) {
 	} else {
 		float figure_d = 1000.0;
 		int figure_m = m;
-		sd_keeper(to_local(p, keeper_pos, keeper_yaw) / FIGURE_SCALE, figure_d, figure_m);
+		vec3 keeper_local = to_local(p, keeper_pos, keeper_yaw) / FIGURE_SCALE;
+		if (warrior_on > 0.5) {
+			sd_warrior(keeper_local, figure_d, figure_m);
+		} else {
+			sd_keeper(keeper_local, figure_d, figure_m);
+		}
 		take(d, m, figure_d * FIGURE_SCALE, figure_m);
 	}
 
@@ -52,6 +57,8 @@ void sd_player(vec3 p, inout float d, inout int m) {
 		int figure_m = m;
 		if (player_style == 0) {
 			sd_nameless(q, player_phase, player_move, figure_d, figure_m);
+		} else if (player_style == 2) {
+			sd_dale(q, player_phase, player_move, figure_d, figure_m);
 		} else {
 			sd_wanderer(q, player_phase, player_move, figure_d, figure_m);
 		}
@@ -128,6 +135,12 @@ float moon_shadow(vec3 p) {
 
 
 vec3 light_at(vec3 p, vec3 n, vec3 rd, float shadow) {
+	if (day_on > 0.5) {
+		// Днём всё просто: тёплое солнце, светлое небо и мягкий отсвет от земли.
+		vec3 day = vec3(1.25, 1.08, 0.82) * max(dot(n, MOON_DIR), 0.0) * (0.25 + 0.75 * shadow);
+		day += vec3(0.56, 0.60, 0.58) * (0.6 + 0.4 * n.y);
+		return day + vec3(0.30, 0.26, 0.18) * pow(clamp(1.0 + dot(n, rd), 0.0, 1.0), 3.0);
+	}
 	vec3 c = vec3(0.70, 0.76, 0.90) * max(dot(n, MOON_DIR), 0.0) * shadow * 0.85;
 	c += vec3(0.13, 0.16, 0.23) * (0.55 + 0.45 * n.y);
 	c += vec3(0.36, 0.42, 0.54) * pow(clamp(1.0 + dot(n, rd), 0.0, 1.0), 3.0);
@@ -160,6 +173,14 @@ void surface_of(int mat, vec3 p, vec3 n, float garden, out vec3 albedo, out vec3
 	albedo = vec3(0.45);
 	if (!figure_surface(mat, p, n, albedo, emissive, ramp)) {
 		environment_surface(mat, p, n, albedo, emissive, ramp);
+		if (day_on > 0.5) {
+			// Храм: красное дерево стен и тёмная черепица вместо зимнего камня.
+			if (mat == MAT_WALL || mat == MAT_HOUSE) {
+				albedo = vec3(0.62, 0.15, 0.11) * (0.8 + 0.4 * dot(albedo, vec3(0.33)));
+			} else if (mat == MAT_ROOF) {
+				albedo = vec3(0.24, 0.23, 0.26);
+			}
+		}
 	}
 	// На неживых поверхностях зимой лежит снег.
 	if (garden < 0.5 && (mat == MAT_ROOF || mat == MAT_STONE || mat == MAT_WALL || mat == MAT_HOUSE || mat == MAT_WOOD || mat == MAT_TRUNK)) {

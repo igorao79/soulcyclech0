@@ -59,6 +59,7 @@ void fragment() {
 	int variant = int(hash21(cell + floor(time * (0.3 + hash21(cell) * 0.5))) * 4.0);
 	ivec2 atlas_px = ivec2(level * 4 + variant, ramp) * ivec2(cell_px) + ivec2(sub);
 	float coverage = texelFetch(atlas_tex, atlas_px, 0).r;
-	vec3 bg = col * 0.38 + vec3(0.006, 0.002, 0.003) * (1.0 - fade);
+	// Штрихи (ряд 9) без плашки под знаком: иначе светлая линия становится серым квадратом.
+	vec3 bg = col * (ramp == 9 ? 0.1 : 0.38) + vec3(0.006, 0.002, 0.003) * (1.0 - fade);
 	COLOR = vec4(mix(bg, col * 1.2, coverage), 1.0);
 }

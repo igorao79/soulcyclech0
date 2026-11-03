@@ -8,9 +8,9 @@ extends Node
 #    на главном экране, бьёт колокол, и нас уносит в видение (vision.gdshader): двойник
 #    с чёрным лицом, звёздными глазами и белыми полосами по телу парит в пустой тьме.
 #    Слов нет — рядом раскрыта книга «Цикл душ» с названиями томов: вписан пока
-#    только первый, «Звездопад». Книгу можно только закрыть. Сохранения делаются
-#    сами на чекпоинтах (save_book.gd), а чекпоинтов пока нет.
-# Когда книгу закрыли, сцена гаснет и сообщает finished.
+#    только первый, «Звездопад». Сохранения делаются сами на чекпоинтах (save_book.gd),
+#    а чекпоинтов пока нет.
+# Книга держится недолго (E / Enter / щелчок — сразу дальше), сцена гаснет и сообщает finished.
 
 signal finished
 
@@ -49,6 +49,9 @@ const REACH := 0.55
 const SIT_TIME := 1.3
 const OUTRO_TIME := 1.1
 const MUSIC_FADE := 2.5
+# Когда в видении раскрывается книга и сколько она держится до второй главы.
+const BOOK_AT := 4.6
+const BOOK_TIME := 5.0
 # Оглавление книги: вписан только первый том.
 const VOLUMES: Array[Dictionary] = [
 	{"numeral": "I", "title": "Звездопад"},
@@ -299,11 +302,13 @@ func _vision() -> void:
 	vision_material.set_shader_parameter("reveal", clampf((t - 2.4) / 3.0, 0.0, 1.0))
 	var push := clampf(t / 30.0, 0.0, 1.0)
 	vision_material.set_shader_parameter("zoom", lerpf(1.0, 1.35, push * push * (3.0 - 2.0 * push)))
-	if t > 4.6 and save_menu == null:
+	if t > BOOK_AT and save_menu == null:
 		_open_save_menu()
+	if t > BOOK_AT + BOOK_TIME:
+		_go(State.OUT)
 
 
-# Книга «Цикл душ» раскрыта над тьмой: названия томов и единственный выход — закрыть её.
+# Книга «Цикл душ» раскрыта над тьмой: названия томов, закрывать её не нужно.
 func _open_save_menu() -> void:
 	save_menu = TomeBook.new()
 	save_menu.atlas = glyph_atlas
@@ -311,16 +316,15 @@ func _open_save_menu() -> void:
 	# Слева, над пустой тьмой: справа парит двойник.
 	save_menu.center = Vector2(0.29, 0.5)
 	save_menu.tomes = VOLUMES
+	save_menu.closable = false
 	save_menu.activated.connect(_on_save_menu)
 	overlay.get_parent().add_child(save_menu)
 	save_menu.open()
 
 
-func _on_save_menu(id: StringName) -> void:
-	if id != &"close":
-		return
-	save_menu.hide()
-	_go(State.OUT)
+func _on_save_menu(_id: StringName) -> void:
+	if state == State.VISION:
+		_go(State.OUT)
 
 
 func _try_interact() -> void:

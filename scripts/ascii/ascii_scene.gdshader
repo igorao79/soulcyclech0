@@ -67,7 +67,7 @@ void fragment() {
 	// Края кадра тонут в ночи.
 	vec2 v = (cell / grid_size - vec2(0.5)) * vec2(1.45, 1.55);
 	float vignette = smoothstep(1.1, 0.3, length(v));
-	col *= mix(0.28, 1.0, vignette);
+	col *= mix(day_on > 0.5 ? 0.72 : 0.28, 1.0, vignette);
 
 	COLOR = vec4(clamp(col, vec3(0.0), vec3(1.0)), float(ramp * 16 + level) / 255.0);
 }

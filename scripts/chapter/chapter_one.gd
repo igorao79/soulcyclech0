@@ -17,7 +17,7 @@ const Ornament := preload("res://scripts/ui/ornament.gd")
 #    он стоит на тропе у воды, вспоминает о смене в библиотеке, и игрок ведёт его через
 #    ельник в городок с каменными домиками, по улице к библиотеке.
 # 3. Библиотека изнутри (library_scene.gd): взять книгу с полки, сесть за стол — видение.
-# 4. Кадр гаснет: «продолжение следует», возврат на главный экран.
+# 4. Видение гаснет, и сразу начинается вторая глава.
 
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const AsciiDemo := preload("res://scripts/ascii/ascii_demo.gd")
@@ -28,7 +28,7 @@ const SCREEN_SHADER := preload("res://scripts/chapter/chapter_one.gdshader")
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
 const THEME_LOOP_START := 4 * 3 * 60.0 / 66.0
 const TITLE_SCENE := "res://scenes/title.tscn"
-# После «продолжение следует» — вторая глава.
+# После видения — вторая глава.
 const NEXT_SCENE := "res://scenes/chapter_two.tscn"
 
 const BASE_FONT_SIZE := 8
@@ -70,7 +70,7 @@ const LINES: Array[Dictionary] = [
 	{"speaker": &"nameless", "text": "Смена в библиотеке до рассвета. Через ельник — успею."},
 ]
 
-enum Beat { CARD, SITTING, STANDING, STRETCH, LOOK, TALK, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
+enum Beat { CARD, SITTING, STANDING, STRETCH, LOOK, TALK, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY }
 
 const SILVER := Color(0.86, 0.89, 0.98)
 const BONE := Color(0.95, 0.91, 0.84)
@@ -110,7 +110,6 @@ var view := 7.4
 var fade := 1.0
 var big_meteor_at := -1.0
 var spoke := false
-var end_alpha := 0.0
 
 
 func _ready() -> void:
@@ -175,8 +174,6 @@ func _process(delta: float) -> void:
 			_to_library()
 		Beat.LIBRARY:
 			pass
-		Beat.ENDING:
-			_ending()
 	if screen_material != null:
 		_follow_camera()
 		_push_uniforms()
@@ -343,19 +340,11 @@ func _to_library() -> void:
 func _enter_library() -> void:
 	library = LibraryScene.new()
 	library.music = music
-	library.finished.connect(func() -> void: _go(Beat.ENDING))
+	# Отложенно: смена сцены сразу убирает её из дерева, а библиотека ещё дорисовывает кадр.
+	library.finished.connect(func() -> void: get_tree().change_scene_to_file.call_deferred(NEXT_SCENE))
 	add_child(library)
 	curtain.color.a = 0.0
 	_go(Beat.LIBRARY)
-
-
-func _ending() -> void:
-	curtain.color.a = clampf(beat_time / 1.8, 0.0, 1.0)
-	music.volume_db = lerpf(-26.0, -40.0, clampf(beat_time / 5.5, 0.0, 1.0))
-	end_alpha = clampf((beat_time - 1.8) / 0.8, 0.0, 1.0) * clampf((5.6 - beat_time) / 0.8, 0.0, 1.0)
-	if beat_time > 6.0:
-		set_process(false)
-		get_tree().change_scene_to_file(NEXT_SCENE)
 
 
 func _walking_on(delta: float) -> void:
@@ -451,7 +440,7 @@ func _build_screen(atlas: Texture2D, cell: Vector2i) -> void:
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.draw.connect(_draw_overlay)
 	top_layer.add_child(overlay)
-	# Карточка главы и «продолжение следует» — знаками по форме букв, как заголовок игры.
+	# Карточка главы — знаками по форме букв, как заголовок игры.
 	card_title = GlyphTitle.new()
 	top_layer.add_child(card_title)
 	get_window().size_changed.connect(_fit)
@@ -481,9 +470,6 @@ func _draw_overlay() -> void:
 		shown = "card"
 		Ornament.draw(overlay, mono_font, Vector2(size.x * 0.5, size.y * 0.6),
 			size.y * 0.16 * clampf((beat_time - 1.4) / 0.8, 0.0, 1.0), roundi(9 * scale), alpha, elapsed)
-	elif beat == Beat.ENDING and end_alpha > 0.0:
-		alpha = end_alpha
-		shown = "end"
 	if card_title != null:
 		if shown != card_shown:
 			card_shown = shown
@@ -491,8 +477,6 @@ func _draw_overlay() -> void:
 			if shown == "card":
 				lines.append({"text": CHAPTER_LABEL, "size": roundi(cap * 0.04), "center": size * Vector2(0.5, 0.42), "small": true, "kind": GlyphTitle.DIM})
 				lines.append({"text": CHAPTER_NAME, "size": roundi(cap * 0.1), "center": size * Vector2(0.5, 0.55), "tracking": 0.06})
-			elif shown == "end":
-				lines.append({"text": "продолжение следует", "size": roundi(cap * 0.05), "center": size * Vector2(0.5, 0.52), "small": true})
 			card_title.set_lines(lines)
 			card_title.restart()
 		card_title.fade = alpha

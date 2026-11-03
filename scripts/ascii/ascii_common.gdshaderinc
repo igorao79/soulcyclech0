@@ -45,7 +45,8 @@ const int MAT_STOLE = 33;
 const int MAT_BUCKLE = 34;
 const int MAT_BOOK = 35;
 // Материалы фигур: два диапазона, между ними цветок и стебель.
-const int MAT_FIGURE_LAST = 35;
+const int MAT_ARMOR = 36;
+const int MAT_FIGURE_LAST = 36;
 
 const int PROP_PINE = 1;
 const int PROP_TREE = 2;
@@ -95,6 +96,12 @@ uniform float wraith_on = 0.0;
 uniform float tolls = 0.0;
 // Вода — открытый океан: валы с пеной вместо ряби, у кромки нет стеблей.
 uniform float sea_on = 0.0;
+// Летний день во дворе храма: тёплое солнце вместо луны, постройки красные.
+uniform float day_on = 0.0;
+// На месте Смотрителя стоит воин; он умеет ходить.
+uniform float warrior_on = 0.0;
+uniform float warrior_phase = 0.0;
+uniform float warrior_walk = 0.0;
 uniform vec3 bell_pos = vec3(0.0);
 uniform float bell_swing = 0.0;
 uniform vec3 chapel_pos = vec3(0.0);

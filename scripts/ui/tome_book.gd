@@ -34,6 +34,8 @@ var atlas: Texture2D
 var cell := Vector2i(5, 8)
 var selected := 0
 var fade := 1.0
+## Есть ли внизу пункт «закрыть книгу».
+var closable := true
 
 var _font: Font
 var _mask: SubViewport
@@ -146,7 +148,8 @@ func _layout() -> void:
 		})
 		y += size.y * 0.08
 	y += size.y * 0.02
-	_lines.append({"text": "", "kind": NORMAL, "size": 0, "y": y, "x": x, "id": &"close", "name": "закрыть книгу"})
+	if closable:
+		_lines.append({"text": "", "kind": NORMAL, "size": 0, "y": y, "x": x, "id": &"close", "name": "закрыть книгу"})
 	_rows.clear()
 	for line in _lines:
 		if line["id"] != &"":

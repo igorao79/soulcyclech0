@@ -97,6 +97,8 @@ var garden_on := true
 var shore_rise := 0.0
 # Вода не внутри эллипса pond_*, а снаружи: эллипс — остров, вокруг океан.
 var island := false
+# Весь мир — живая трава, деревья внутри стен редкие, ходить можно только в этом прямоугольнике.
+var yard := Rect2()
 # Направление взгляда героя при появлении.
 var spawn_yaw := 0.0
 
@@ -121,6 +123,8 @@ func _init(world_layout: StringName = &"crossroads") -> void:
 	layout = world_layout
 	if layout == &"island_trail":
 		_use_island_trail()
+	elif layout == &"temple_yard":
+		_use_temple_yard()
 	_noise.seed = 79
 	_noise.frequency = 0.06
 	_random.seed = 4117
@@ -164,6 +168,37 @@ func _use_island_trail() -> void:
 	stumps = [Vector3(56.5, 41.5, 0.5)]
 	garden_on = false
 	shore_rise = 0.8
+
+
+# Внутренний двор храма летом: на севере главное здание, вдоль боков красные постройки,
+# по середине тропа к воротам на юге. Воды нет, вместо Смотрителя — идущий впереди воин.
+func _use_temple_yard() -> void:
+	var nowhere := Vector2(-1000.0, -1000.0)
+	yard = Rect2(47.0, 31.0, 26.0, 45.0)
+	spawn = Vector2(60.0, 33.0)
+	spawn_yaw = 0.0
+	keeper = Vector2(60.0, 36.0)
+	bell = nowhere
+	flower = nowhere
+	islet = nowhere
+	pier_rect = Vector4(-10.0, -10.0, -9.0, -9.0)
+	chapel = Vector2(60.0, 26.0)
+	pond_center = nowhere
+	pond_radii = Vector2(1.0, 1.0)
+	routes = [[Vector2(60, 30), Vector2(60, 76)]]
+	boulders = []
+	ruin_walls = []
+	clearings = [Vector3(60.0, 33.0, 3.0)]
+	house_points = []
+	for z in range(36, 78, 7):
+		house_points.append(Vector3(44.0, float(z), 0.0))
+		house_points.append(Vector3(76.0, float(z), 0.0))
+	lantern_points = [Vector2(57.0, 40.0), Vector2(63.0, 40.0), Vector2(57.0, 56.0), Vector2(63.0, 56.0)]
+	graves = []
+	rocks = [Vector3(52.0, 46.0, 0.5), Vector3(68.0, 62.0, 0.6)]
+	stumps = []
+	garden_on = true
+	shore_rise = 0.0
 
 
 ## Места, с которыми можно говорить или действовать: в главе их нет.
@@ -211,6 +246,11 @@ func clearance(point: Vector2) -> float:
 		minf(point.x - 2.0, point.y - 2.0),
 		minf(SIZE.x - 2.0 - point.x, SIZE.y - 2.0 - point.y)
 	)
+	if yard.has_area():
+		best = minf(best, minf(
+			minf(point.x - yard.position.x, point.y - yard.position.y),
+			minf(yard.end.x - point.x, yard.end.y - point.y)
+		))
 	if not is_on_pier(point):
 		best = minf(best, height_at(point) + WADE_DEPTH)
 	var cell := Vector2i(floori(point.x / PROP_CELL), floori(point.y / PROP_CELL))
@@ -289,6 +329,8 @@ func _pond_field(point: Vector2) -> float:
 func _garden(point: Vector2) -> float:
 	if not garden_on:
 		return 0.0
+	if yard.has_area():
+		return 1.0
 	var distance := point.distance_to(pond_center + Vector2(0.0, -1.0))
 	var wobble := _noise.get_noise_2dv(point * 0.7) * 5.0
 	return 1.0 - smoothstep(19.0, 25.0, distance + wobble)
@@ -407,7 +449,16 @@ func _try_forest(cell: Vector2i) -> void:
 
 	var garden := _garden(point)
 	var scale := _random.randf()
-	if garden > 0.5:
+	if yard.has_point(point):
+		# Внутри стен ухоженный сад: редкие деревья и кусты, тропа открыта.
+		if keep_out < 2.0:
+			return
+		var pick := _random.randf()
+		if pick < 0.07:
+			_place(PROP_TREE, point, scale)
+		elif pick < 0.14:
+			_place(PROP_BUSH, point, scale)
+	elif garden > 0.5:
 		var roll := _random.randf()
 		if roll < 0.28:
 			_place(PROP_TREE, point, scale)

@@ -262,6 +262,99 @@ void sd_wanderer(vec3 q, float phase, float amount, inout float d, inout int m) 
 }
 
 
+// Молодой Дэйл: растрёпанные рыже-каштановые волосы с чёлкой набок, открытое лицо с повязкой
+// поперёк носа, чёрная майка, голые руки, чёрные штаны и ботинки. Поджарый подросток:
+// ноги стоят врозь, между руками и корпусом просвет, чтобы силуэт читался человеком.
+void sd_dale(vec3 q, float phase, float amount, inout float d, inout int m) {
+	float bob;
+	float swing = apply_body_motion(q, phase, amount, bob);
+	sd_leg(q + vec3(0.05, 0.0, 0.0), -1.0, phase, amount, bob, 0.0, 0.0, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	sd_leg(q - vec3(0.05, 0.0, 0.0), 1.0, phase + PI, amount, bob, 0.0, 0.0, MAT_TROUSER, MAT_TROUSER, MAT_SHOE, d, m);
+	twist_upper_body(q, phase, amount, bob);
+	vec2 wind = local_wind();
+	// Майка: от пояса к груди чуть шире, плечи и шея открыты.
+	vec3 body = vec3(q.x, q.y, q.z * 1.3);
+	take(d, m, max(sd_taper(body, 0.78, 0.17, 1.22, 0.2), 0.78 - q.y), MAT_COAT);
+	take(d, m, sd_taper(vec3(q.x, q.y, q.z * 1.3), 1.14, 0.19, 1.30, 0.1), MAT_SKIN);
+	take(d, m, sd_capsule(q, vec3(0.0, 1.26, 0.0), vec3(0.0, 1.42, 0.02), 0.068), MAT_SKIN);
+	for (int i = 0; i < 2; i++) {
+		float side = i == 0 ? 1.0 : -1.0;
+		float arm = side * swing;
+		vec3 shoulder = vec3(side * 0.25, 1.22, 0.0);
+		vec3 elbow = vec3(side * 0.34, 0.95, -arm * 0.14);
+		vec3 hand = vec3(side * 0.36, 0.70 + abs(arm) * 0.03, -arm * 0.32);
+		take(d, m, sd_capsule(q, shoulder, elbow, 0.06), MAT_SKIN);
+		take(d, m, sd_capsule(q, elbow, hand, 0.05), MAT_SKIN);
+	}
+	vec3 head = turn_head(q, amount, 1.7);
+	take(d, m, length((head - vec3(0.0, 1.56, 0.03)) * vec3(0.95, 1.0, 1.0)) - 0.195, MAT_SKIN);
+	// Повязка поперёк переносицы.
+	take(d, m, sd_box(head - vec3(0.0, 1.5, 0.205), vec3(0.085, 0.018, 0.02)), MAT_SHIRT);
+	// Волосы: макушка и затылок растрёпаны, лицо спереди открыто до бровей.
+	float sway = smoothstep(1.78, 1.36, head.y);
+	vec3 strands = head - vec3(wind.x * 1.6 + coat_lag.x * 0.1, 0.0, wind.y * 1.6 + coat_lag.y * 0.1) * sway;
+	float hair = length(strands - vec3(0.0, 1.69, -0.05)) - 0.235;
+	hair = smin(hair, length(strands - vec3(0.0, 1.5, -0.13)) - 0.17, 0.07);
+	hair = smin(hair, length(vec3(abs(strands.x) - 0.2, strands.y - 1.52, strands.z + 0.08)) - 0.07, 0.06);
+	hair -= max(sin(head.x * 19.0 + 0.7) * sin(head.y * 17.0 + head.x * 5.0) * sin(head.z * 16.0 + 1.3), 0.0) * 0.16;
+	hair = max(hair, -(length(head - vec3(0.0, 1.46, 0.36)) - 0.34));
+	take(d, m, hair * 0.6, MAT_HAIR_BLOND);
+	// Чёлка набок спадает на один глаз, второй открыт.
+	take(d, m, sd_capsule(strands, vec3(-0.04, 1.74, 0.17), vec3(0.11, 1.6, 0.21), 0.05), MAT_HAIR_BLOND);
+	if (eyes_open(0.41)) {
+		take(d, m, length(vec3(head.x + 0.085, (head.y - 1.56) * 0.85, head.z - 0.195)) - 0.045, MAT_EYE_DARK);
+	}
+}
+
+
+// Воин: серебристые латы, тёмные рукава, багровые шарф и табард, заострённый шлем с прорезью
+// и красным плюмажем, длинное копьё в правой руке. Лицом к +z.
+void sd_warrior(vec3 q, inout float d, inout int m) {
+	float swing = sin(warrior_phase) * warrior_walk;
+	q.y -= abs(cos(warrior_phase)) * 0.025 * warrior_walk;
+	for (int i = 0; i < 2; i++) {
+		float side = i == 0 ? 1.0 : -1.0;
+		float stride = side * swing;
+		vec3 hip = vec3(side * 0.11, 0.86, 0.0);
+		vec3 knee = vec3(side * 0.12, 0.48 + max(-stride, 0.0) * 0.05, stride * 0.15 + 0.02);
+		vec3 ankle = vec3(side * 0.12, 0.11 + max(stride, 0.0) * 0.06, stride * 0.28);
+		take(d, m, sd_capsule(q, hip, knee, 0.085), MAT_COAT);
+		take(d, m, sd_capsule(q, knee, ankle, 0.07), MAT_ARMOR);
+		take(d, m, sd_capsule(q, ankle - vec3(0.0, 0.04, 0.02), ankle + vec3(0.0, -0.08, 0.17), 0.05), MAT_ARMOR);
+	}
+	vec3 body = vec3(q.x, q.y, q.z * 1.25);
+	take(d, m, max(sd_taper(body, 0.8, 0.2, 1.3, 0.27), 0.78 - q.y), MAT_ARMOR);
+	take(d, m, sd_box(q - vec3(0.0, 0.84, 0.0), vec3(0.21, 0.035, 0.15)), MAT_STOLE);
+	// Табард спереди и сзади расходится книзу.
+	float flare = mix(1.4, 0.85, clamp((q.y - 0.14) / 0.7, 0.0, 1.0));
+	take(d, m, sd_box(vec3(q.x / flare, q.y - 0.48, abs(q.z) - 0.16), vec3(0.13, 0.35, 0.02)) * 0.8, MAT_CRIMSON);
+	take(d, m, sd_box(vec3(abs(q.x) - 0.2 / flare, q.y - 0.56, q.z), vec3(0.05, 0.26, 0.12)) * 0.8, MAT_ARMOR);
+	// Шарф вокруг шеи, наплечники.
+	take(d, m, (length((q - vec3(0.0, 1.34, 0.0)) / vec3(1.0, 0.5, 0.95)) - 0.19) * 0.5, MAT_CRIMSON);
+	take(d, m, length((vec3(abs(q.x) - 0.28, q.y - 1.25, q.z)) / vec3(1.0, 0.72, 1.0)) * 0.72 - 0.085, MAT_ARMOR);
+	// Левая рука ходит в такт, правая держит копьё.
+	vec3 elbow_l = vec3(0.34, 0.98, -swing * 0.1);
+	vec3 hand_l = vec3(0.32, 0.74, -swing * 0.22 + 0.03);
+	take(d, m, sd_capsule(q, vec3(0.28, 1.22, 0.0), elbow_l, 0.07), MAT_COAT);
+	take(d, m, sd_capsule(q, elbow_l, hand_l, 0.065), MAT_ARMOR);
+	vec3 hand_r = vec3(-0.38, 0.98, 0.17);
+	take(d, m, sd_capsule(q, vec3(-0.28, 1.22, 0.0), vec3(-0.39, 0.98, 0.0), 0.07), MAT_COAT);
+	take(d, m, sd_capsule(q, vec3(-0.39, 0.98, 0.0), hand_r, 0.065), MAT_ARMOR);
+	take(d, m, sd_capsule(q, vec3(-0.38, 0.02, 0.17), vec3(-0.38, 2.0, 0.17), 0.03), MAT_STAFF);
+	float leaf = clamp(1.0 - abs(q.y - 2.1) / 0.14, 0.0, 1.0);
+	take(d, m, sd_box(q - vec3(-0.38, 2.1, 0.17), vec3(0.055 * leaf + 0.004, 0.14, 0.02)) * 0.7, MAT_ARMOR);
+	// Шлем с гребнем и прорезью, плюмаж стекает назад.
+	vec3 helm = q - vec3(0.0, 1.57, 0.02);
+	take(d, m, (length(helm / vec3(0.9, 1.15, 1.0)) - 0.19) * 0.85, MAT_ARMOR);
+	take(d, m, sd_capsule(q, vec3(0.0, 1.74, 0.03), vec3(0.0, 1.87, -0.02), 0.03), MAT_ARMOR);
+	take(d, m, sd_box(q - vec3(0.0, 1.59, 0.19), vec3(0.11, 0.022, 0.03)), MAT_EYE_DARK);
+	take(d, m, sd_box(q - vec3(0.0, 1.53, 0.2), vec3(0.02, 0.06, 0.03)), MAT_EYE_DARK);
+	float wave = sin(time * 1.4) * 0.03;
+	take(d, m, sd_capsule(q, vec3(0.0, 1.84, -0.04), vec3(0.02, 1.86, -0.24 - wave), 0.06), MAT_CRIMSON);
+	take(d, m, sd_capsule(q, vec3(0.02, 1.86, -0.24 - wave), vec3(0.08, 1.56, -0.38 - wave * 2.0), 0.04), MAT_CRIMSON);
+}
+
+
 // Смотритель: острый капюшон, тёмный балахон с рваным подолом и багровой столой,
 // бледное лицо в тени, красные глаза. В правой руке посох с тлеющим фонарём.
 void sd_keeper(vec3 q, inout float d, inout int m) {
@@ -315,21 +408,24 @@ bool figure_surface(int mat, vec3 p, vec3 n, inout vec3 albedo, inout vec3 emiss
 		albedo = vec3(0.62, 0.60, 0.58);
 		emissive = vec3(0.26, 0.25, 0.24);
 	} else if (mat == MAT_SKIN) {
-		albedo = vec3(0.66, 0.60, 0.56);
-		emissive = vec3(0.36, 0.32, 0.30);
+		// У Дэйла кожа тёплая, загорелая на солнце: иначе руки выгорают в белое.
+		albedo = player_style == 2 ? vec3(0.66, 0.44, 0.33) : vec3(0.66, 0.60, 0.56);
+		emissive = player_style == 2 ? vec3(0.24, 0.13, 0.09) : vec3(0.36, 0.32, 0.30);
 	} else if (mat == MAT_HAIR_DARK) {
 		albedo = vec3(0.05, 0.05, 0.06);
 		emissive = vec3(0.012, 0.012, 0.016);
 	} else if (mat == MAT_HAIR_BLOND) {
-		albedo = vec3(0.58, 0.48, 0.30);
-		emissive = vec3(0.20, 0.165, 0.10);
+		// У Дэйла те же кудри, только рыже-каштановые.
+		albedo = player_style == 2 ? vec3(0.66, 0.30, 0.11) : vec3(0.58, 0.48, 0.30);
+		emissive = player_style == 2 ? vec3(0.30, 0.12, 0.035) : vec3(0.20, 0.165, 0.10);
 	} else if (mat == MAT_TUNIC) {
 		albedo = vec3(0.66, 0.62, 0.50);
 		emissive = vec3(0.25, 0.235, 0.18);
 	} else if (mat == MAT_TROUSER) {
 		// Серые брюки Безымянного, у Странника — потёртая коричневая шерсть.
-		albedo = player_style == 0 ? vec3(0.40, 0.40, 0.42) : vec3(0.27, 0.22, 0.17);
-		emissive = player_style == 0 ? vec3(0.11, 0.11, 0.12) : vec3(0.06, 0.05, 0.035);
+		// У Дэйла — чёрные штаны.
+		albedo = player_style == 0 ? vec3(0.40, 0.40, 0.42) : (player_style == 2 ? vec3(0.17, 0.17, 0.2) : vec3(0.27, 0.22, 0.17));
+		emissive = player_style == 0 ? vec3(0.11, 0.11, 0.12) : (player_style == 2 ? vec3(0.05, 0.05, 0.06) : vec3(0.06, 0.05, 0.035));
 	} else if (mat == MAT_SHOE) {
 		albedo = vec3(0.075, 0.068, 0.07);
 		emissive = vec3(0.018, 0.016, 0.018);
@@ -366,6 +462,9 @@ bool figure_surface(int mat, vec3 p, vec3 n, inout vec3 albedo, inout vec3 emiss
 		ramp = RAMP_GLOW;
 	} else if (mat == MAT_EYE_DARK) {
 		albedo = vec3(0.0);
+	} else if (mat == MAT_ARMOR) {
+		albedo = vec3(0.60, 0.63, 0.70);
+		emissive = vec3(0.30, 0.32, 0.38);
 	} else if (mat == MAT_BOOK) {
 		// Тёмно-синий переплёт с тусклым серебряным тиснением.
 		albedo = vec3(0.16, 0.18, 0.36);
@@ -401,7 +500,7 @@ void figure_glyph(int mat, vec3 p, vec2 wc, float light, inout vec3 col, inout i
 	if (mat == MAT_COAT || mat == MAT_ROBE) {
 		// Ткань: вертикальные складки, слегка уходящие в сторону к подолу.
 		float fold = sin(around * 7.0 + lp.y * 1.3 + sin(lp.y * 3.0) * 0.6);
-		bool hem = is_player ? lp.y < 0.42 : lp.y < 0.30;
+		bool hem = is_player ? lp.y < 0.42 && player_style != 2 : lp.y < 0.30;
 		bool pocket = is_player && front && abs(abs(lp.x) - 0.21) < 0.085 && abs(lp.y - 0.72) < 0.045;
 		if (pocket) {
 			level = FG_DASH;
@@ -453,6 +552,11 @@ void figure_glyph(int mat, vec3 p, vec2 wc, float light, inout vec3 col, inout i
 		}
 	} else if (mat == MAT_HAIR_BLOND) {
 		level = grain > 0.55 ? FG_RING + int(grain * 1.99) : (light > 0.6 ? FG_TILDE : FG_TICK);
+		if (player_style == 2) {
+			// Рыжие пряди вперемешку с каштановыми, полосами от макушки вниз.
+			float strand = sin(around * 11.0 + lp.y * 4.0) * 0.5 + 0.5;
+			col *= mix(vec3(0.42, 0.34, 0.34), vec3(1.15, 0.92, 0.62), smoothstep(0.35, 0.65, strand));
+		}
 	} else if (mat == MAT_BOOT) {
 		// Ремешки сапог и наручей.
 		level = mod(lp.y, 0.16) < 0.05 ? FG_EQUAL : FG_DOT;
@@ -464,6 +568,9 @@ void figure_glyph(int mat, vec3 p, vec2 wc, float light, inout vec3 col, inout i
 		level = FG_BAR;
 	} else if (mat == MAT_EYE_DARK) {
 		col = vec3(0.012);
+	} else if (mat == MAT_ARMOR) {
+		// Пластины лат: стык — чертой, сами они плотные и на свету гуще.
+		level = mod(lp.y, 0.22) < 0.05 ? FG_EQUAL : (light > 0.7 ? FG_HASH : FG_PLUS);
 	} else if (mat == MAT_BOOK) {
 		level = mod(wc.y, 2.0) < 1.0 ? FG_EQUAL : FG_HASH;
 	}
