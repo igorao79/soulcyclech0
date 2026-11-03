@@ -9,7 +9,7 @@ const TravelTransitionScene := preload("res://scripts/transitions/travel_transit
 const CHAPEL_TEXTURE := preload("res://assets/props/chapel.png")
 # Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const WINTER_THEME := preload("res://assets/music/snowbound_crossroads.ogg")
-const WINTER_LOOP_START := 4 * 3 * 60.0 / 88.0
+const WINTER_LOOP_START := 4 * 3 * 60.0 / 66.0
 
 var current_location := &"crossroads"
 var winter_map: SoulcycleWinterMap

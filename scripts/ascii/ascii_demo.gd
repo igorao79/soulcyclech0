@@ -16,7 +16,7 @@ const FIGURE_SHADER := preload("res://scripts/ascii/ascii_figure_layer.gdshader"
 const GLYPH_SHADER := preload("res://scripts/ascii/ascii_glyph.gdshader")
 # Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const WINTER_THEME := preload("res://assets/music/snowbound_crossroads.ogg")
-const WINTER_LOOP_START := 4 * 3 * 60.0 / 88.0
+const WINTER_LOOP_START := 4 * 3 * 60.0 / 66.0
 const FOOTSTEPS := {
 	&"snow": [
 		preload("res://assets/audio/footsteps/snow_01.wav"),
@@ -45,6 +45,8 @@ const TURN_RATE := 9.0
 # Совпадает с GAIT_REACH * FIGURE_SCALE / GAIT_STANCE в шейдере: так ступня не скользит.
 const STEP_LENGTH := 0.68
 const FOOT_REACH := 0.37
+# Шаг звучит чуть раньше касания: у записи удар не в самом начале, плюс задержка звука.
+const STEP_LEAD := 0.35
 const FOOT_SIDE := 0.09
 const LEAN_PER_SPEED := 0.035
 const LEAN_PER_ACCEL := 0.012
@@ -447,8 +449,8 @@ func _update_body_motion(delta: float) -> void:
 
 # Шаг звучит и оставляет след в тот момент, когда пятка касается земли.
 func _track_steps(previous_phase: float) -> void:
-	var strike := floori(player_phase / PI)
-	if strike == floori(previous_phase / PI):
+	var strike := floori((player_phase + STEP_LEAD) / PI)
+	if strike == floori((previous_phase + STEP_LEAD) / PI):
 		return
 	var is_left := posmod(strike, 2) == 0
 	var right := Vector2(cos(player_yaw), -sin(player_yaw))
@@ -720,7 +722,7 @@ func _play_step(is_left: bool) -> void:
 	step_voice = (step_voice + 1) % step_players.size()
 	step_player.stream = sounds[sound_index]
 	# Левая и правая нога звучат чуть по-разному, а первый шаг с места тише остальных.
-	step_player.pitch_scale = (0.985 if is_left else 1.01) + random.randf_range(-0.02, 0.02)
+	step_player.pitch_scale = (0.99 if is_left else 1.005) + random.randf_range(-0.01, 0.01)
 	var pace := clampf(player_velocity.length() / WALK_SPEED, 0.0, 1.0)
 	step_player.volume_db = lerpf(-15.0, -9.0, pace) + random.randf_range(-1.0, 1.0)
 	step_player.play()

@@ -40,6 +40,8 @@ const WALK_SPEED := 1.55
 const ACCEL := 6.0
 const BRAKE := 8.0
 const STEP_LENGTH := 0.68
+# Шаг звучит чуть раньше касания: у записи удар не в самом начале, плюс задержка звука.
+const STEP_LEAD := 0.35
 const REACH := 0.55
 const SIT_TIME := 1.3
 const OUTRO_TIME := 1.1
@@ -145,7 +147,8 @@ func _build(atlas: Texture2D, cell: Vector2i) -> void:
 	layer.add_child(overlay)
 
 	step_player = AudioStreamPlayer.new()
-	step_player.bus = &"SFX"
+	# Та же шина, что у шагов снаружи: срез верхов и короткий хвост, если она уже есть.
+	step_player.bus = &"AsciiFootsteps" if AudioServer.get_bus_index(&"AsciiFootsteps") >= 0 else &"SFX"
 	add_child(step_player)
 
 
@@ -306,7 +309,7 @@ func _walk(delta: float, axis: float) -> void:
 	move = move_toward(move, 1.0 if moved > 0.0005 else 0.0, delta * 5.0)
 	var previous := phase
 	phase += moved * PI / STEP_LENGTH
-	if floori(phase / PI) != floori(previous / PI):
+	if floori((phase + STEP_LEAD) / PI) != floori((previous + STEP_LEAD) / PI):
 		_step()
 	# Корпус клонится в шаг, полы отстают.
 	lean = lean.lerp(Vector2(0.0, clampf(absf(velocity) * 0.04, 0.0, 0.12)), minf(delta * 8.0, 1.0))
@@ -315,7 +318,7 @@ func _walk(delta: float, axis: float) -> void:
 
 func _step() -> void:
 	step_player.stream = STEPS[randi() % STEPS.size()]
-	step_player.pitch_scale = randf_range(0.96, 1.03)
+	step_player.pitch_scale = randf_range(0.98, 1.02)
 	step_player.volume_db = lerpf(-17.0, -11.0, clampf(absf(velocity) / WALK_SPEED, 0.0, 1.0))
 	step_player.play()
 

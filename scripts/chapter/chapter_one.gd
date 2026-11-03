@@ -6,8 +6,9 @@ extends Node
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 
 # Глава первая, «Звездопад».
-# 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном склоне над озером,
-#    над ним идёт звездопад. Под конец болид, он встаёт.
+# 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном берегу над озером,
+#    над ним идёт звездопад. Под конец болид, он встаёт, поворачивается и уходит по ровной
+#    тропе вдоль берега; камера ведёт его, и кадр гаснет.
 # 2. Вид сверху со свободным управлением (движок ASCII-ночи, раскладка «тропа у озера»):
 #    он стоит на тропе у воды, вспоминает о смене в библиотеке, и игрок ведёт его через
 #    ельник в городок с каменными домиками, по улице к библиотеке.
@@ -21,7 +22,7 @@ const SaveBook := preload("res://scripts/save/save_book.gd")
 const SCREEN_SHADER := preload("res://scripts/chapter/chapter_one.gdshader")
 # Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
-const THEME_LOOP_START := 4 * 3 * 60.0 / 88.0
+const THEME_LOOP_START := 4 * 3 * 60.0 / 66.0
 const TITLE_SCENE := "res://scenes/title.tscn"
 
 const BASE_FONT_SIZE := 8
@@ -31,6 +32,20 @@ const YAW_SIT := -2.1
 const CUTSCENE_TIME := 15.0
 const STAND_TIME := 2.0
 const TO_TOP_TIME := 1.4
+const TURN_TIME := 0.9
+const WALK_SPEED := 1.05
+# Совпадает с GAIT_REACH * FIGURE_SCALE / GAIT_STANCE в ascii_figures.gdshaderinc.
+const STEP_LENGTH := 0.68
+# Шаг звучит чуть раньше касания: у записи удар не в самом начале, плюс задержка звука.
+const STEP_LEAD := 0.35
+# Идёт вправо, вполоборота к нам.
+const YAW_WALK := PI * 0.5 - 0.35
+const WALK_TIME := 6.5
+const SNOW_STEPS: Array[AudioStream] = [
+	preload("res://assets/audio/footsteps/snow_01.wav"),
+	preload("res://assets/audio/footsteps/snow_02.wav"),
+	preload("res://assets/audio/footsteps/snow_03.wav"),
+]
 const DOOR_REACH := 2.2
 const TO_LIBRARY_TIME := 1.4
 
@@ -42,7 +57,7 @@ const LINES: Array[Dictionary] = [
 	{"speaker": &"nameless", "text": "До рассвета моя смена в библиотеке. Через ельник, а там по городу — успею."},
 ]
 
-enum Beat { CARD, SITTING, STANDING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
+enum Beat { CARD, SITTING, STANDING, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
 
 const SILVER := Color(0.86, 0.89, 0.98)
 const BONE := Color(0.95, 0.91, 0.84)
@@ -65,6 +80,11 @@ var elapsed := 0.0
 var drawing := false
 var sit := 1.0
 var lean := Vector2.ZERO
+var hero_x := SIT_X
+var hero_yaw := YAW_SIT
+var phase := 0.0
+var move := 0.0
+var step_player: AudioStreamPlayer
 var cam := Vector2(SIT_X - 2.4, 1.3)
 var view := 7.4
 var fade := 1.0
@@ -115,6 +135,10 @@ func _process(delta: float) -> void:
 				_go(Beat.STANDING)
 		Beat.STANDING:
 			_standing()
+		Beat.TURNING:
+			_turning()
+		Beat.WALKING:
+			_walking(delta)
 		Beat.TO_TOP:
 			_to_top()
 		Beat.TOP:
@@ -153,13 +177,44 @@ func _standing() -> void:
 	var t := clampf(beat_time / STAND_TIME, 0.0, 1.0)
 	sit = 1.0 - _ease(t)
 	lean = Vector2(0.0, sin(t * PI) * 0.26)
-	if beat_time > STAND_TIME + 0.6:
+	if beat_time > STAND_TIME + 0.3:
+		_go(Beat.TURNING)
+
+
+func _turning() -> void:
+	var t := clampf(beat_time / TURN_TIME, 0.0, 1.0)
+	hero_yaw = lerp_angle(YAW_SIT, YAW_WALK, _ease(t))
+	lean = lean.lerp(Vector2.ZERO, 0.1)
+	if t >= 1.0:
+		_go(Beat.WALKING)
+
+
+# Уходит по ровному берегу; под конец кадр гаснет и открывается вид сверху.
+func _walking(delta: float) -> void:
+	move = move_toward(move, 1.0, delta * 2.0)
+	var before := hero_x
+	hero_x += WALK_SPEED * move * delta
+	var previous := phase
+	phase += (hero_x - before) * PI / STEP_LENGTH
+	if floori((phase + STEP_LEAD) / PI) != floori((previous + STEP_LEAD) / PI):
+		_play_step()
+	lean = lean.lerp(Vector2(0.0, 0.05 * move), 1.0 - exp(-delta * 4.0))
+	if beat_time > WALK_TIME:
 		_go(Beat.TO_TOP)
+
+
+func _play_step() -> void:
+	step_player.stream = SNOW_STEPS[randi() % SNOW_STEPS.size()]
+	step_player.pitch_scale = randf_range(0.97, 1.02)
+	step_player.volume_db = -14.0 + randf_range(-0.8, 0.8)
+	step_player.play()
 
 
 # Кадр гаснет, а в темноте уже собирается вид сверху: та же ночь, тот же берег.
 func _to_top() -> void:
 	fade = clampf(beat_time / TO_TOP_TIME, 0.0, 1.0)
+	# Пока гаснет кадр, он ещё идёт.
+	_walking_on(get_process_delta_time())
 	if beat_time >= TO_TOP_TIME and screen_material != null:
 		curtain.color.a = 1.0
 		screen_layer.queue_free()
@@ -213,25 +268,41 @@ func _ending() -> void:
 		get_tree().change_scene_to_file(TITLE_SCENE)
 
 
+func _walking_on(delta: float) -> void:
+	var before := hero_x
+	hero_x += WALK_SPEED * move * delta
+	var previous := phase
+	phase += (hero_x - before) * PI / STEP_LENGTH
+	if floori((phase + STEP_LEAD) / PI) != floori((previous + STEP_LEAD) / PI) and fade < 0.7:
+		_play_step()
+
+
 func _ease(t: float) -> float:
 	return t * t * (3.0 - 2.0 * t)
 
 
 # Совпадает с ground_height в chapter_one.gdshader.
 static func ground_height(x: float) -> float:
-	var hill := 6.2 * smoothstep(-2.5, 17.0, x) - 0.45 + 0.10 * sin(x * 1.3) + 0.05 * sin(x * 3.7 + 1.0)
-	return hill - 9.0 * (1.0 - smoothstep(-2.4, 0.6, x))
+	var bank := 0.9 * smoothstep(-1.5, 4.0, x) - 0.35 + 0.05 * sin(x * 0.9) + 0.025 * sin(x * 2.3 + 1.0)
+	return bank - 9.0 * (1.0 - smoothstep(-2.4, 0.6, x))
 
 
-# Заставка: камера медленно подходит к сидящему от неба; когда он встаёт — чуть выше.
+# Заставка: камера медленно подходит к сидящему от неба; когда он идёт — ведёт его,
+# чуть забегая вперёд.
 func _follow_camera() -> void:
 	var t := 1.0
 	if beat == Beat.CARD:
 		t = 0.0
 	elif beat == Beat.SITTING:
 		t = _ease(clampf(beat_time / CUTSCENE_TIME, 0.0, 1.0))
-	cam = Vector2(SIT_X - 2.4, 1.3).lerp(Vector2(SIT_X - 0.9, 1.25), t)
-	view = lerpf(7.4, 5.4, t)
+	var seated := Vector2(SIT_X - 2.4, 1.3).lerp(Vector2(SIT_X - 0.9, 1.25), t)
+	if beat in [Beat.CARD, Beat.SITTING, Beat.STANDING]:
+		cam = seated
+		view = lerpf(7.4, 5.4, t)
+		return
+	var k := 1.0 - exp(-get_process_delta_time() * 1.6)
+	cam = cam.lerp(Vector2(hero_x + 0.9, ground_height(hero_x) + 1.0), k)
+	view = lerpf(view, 5.8, k)
 
 
 func _push_uniforms() -> void:
@@ -240,10 +311,10 @@ func _push_uniforms() -> void:
 	m.set_shader_parameter("cam_center", cam)
 	m.set_shader_parameter("view_height", view)
 	m.set_shader_parameter("fade", fade)
-	m.set_shader_parameter("player_pos", Vector3(SIT_X, ground_height(SIT_X), 0.0))
-	m.set_shader_parameter("player_yaw", YAW_SIT)
-	m.set_shader_parameter("player_phase", 0.0)
-	m.set_shader_parameter("player_move", 0.0)
+	m.set_shader_parameter("player_pos", Vector3(hero_x, ground_height(hero_x), 0.0))
+	m.set_shader_parameter("player_yaw", hero_yaw)
+	m.set_shader_parameter("player_phase", phase)
+	m.set_shader_parameter("player_move", move)
 	m.set_shader_parameter("player_lean", lean)
 	m.set_shader_parameter("player_sit", sit)
 	m.set_shader_parameter("coat_lag", Vector2.ZERO)
@@ -343,5 +414,8 @@ func _build_audio() -> void:
 	music.volume_db = -40.0
 	add_child(music)
 	music.play()
+	step_player = AudioStreamPlayer.new()
+	step_player.bus = &"SFX"
+	add_child(step_player)
 	music_tween = create_tween()
 	music_tween.tween_property(music, "volume_db", -17.0, 6.0).set_delay(1.5).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)

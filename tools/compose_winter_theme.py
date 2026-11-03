@@ -1,19 +1,18 @@
 """Зимняя тема локации «Снежный перекрёсток», собранная из кода.
 
-Ми минор, медленный вальс на 3/4, 88 ударов в минуту. Тихая, но многослойная: мелодию ведёт
-тёплый кларнет, аккорды перебирает арфа плавной волной, под ними хор на «а» и струнные,
-сверху изредка звенят челеста и колокольчики, фоном — шорох метели.
+Ми минор, очень медленный вальс на 3/4, 66 ударов в минуту. Спокойная, почти колыбельная:
+мягкий хор и струнные тянут аккорды, арфа редко перебирает их по четвертям, мелодию тихо
+ведёт челеста, низкий кларнет иногда отвечает ей вполголоса. Фоном — далёкий шорох метели.
 
   Вступление (4 такта) — арфа, хор и метель, без мелодии.
-  A  (8 тактов)  — тема у кларнета над арфой и тянущимся басом.
-  A2 (8 тактов)  — тема у челесты на октаву выше, кларнет отвечает ей подголоском.
-  B  (8 тактов)  — светлая середина в соль мажоре: мелодию берут струнные, хор нарастает.
-  A3 (8 тактов)  — кульминация: тема у струнных и кларнета вместе, челеста искрится сверху;
-                   к концу всё стихает, последняя нота тянется через стык.
+  A  (8 тактов)  — тема у челесты.
+  A2 (8 тактов)  — тема у низкого кларнета вполголоса, челеста отвечает подголоском.
+  B  (8 тактов)  — середина в соль мажоре: только аккорды и редкие ноты челесты внизу.
+  A3 (8 тактов)  — тема у челесты и кларнета в унисон, так же тихо; к концу стихает,
+                   последняя нота тянется через стык.
   R  (4 такта)   — передышка: снова вступление, нота в ноту.
 
-Ни ударных, ни отрывистого аккомпанемента: «раз-два-три» вальса держат бас на сильную долю
-и волна арфы, а не удары.
+Ни ударных, ни нарастаний, ни мелодии у струнных: громкость почти ровная по всей петле.
 
 Петля — с начала A до конца R. Перед темой всегда звучит одно и то же (вступление или R,
 сыгранные одинаково до сэмпла, метель тоже повторяется по тактам), поэтому начало темы
@@ -35,7 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import compose_menu_theme as base  # noqa: E402
 
 RATE = base.RATE
-BPM = 88.0
+BPM = 66.0
 BEAT = 60.0 / BPM
 BAR = BEAT * 3
 INTRO_BARS = 4
@@ -179,7 +178,7 @@ COUNTER = [
 ]
 # Последняя нота кульминации тянется через стык: в A3 она снята из темы.
 THEME_OPEN_END = THEME[:-1] + [[("-", 3)]]
-A3_DYNAMICS = [1.0, 1.0, 1.0, 1.0, 1.0, 0.95, 0.82, 0.68]
+A3_DYNAMICS = [1.0, 1.0, 1.0, 1.0, 1.0, 0.95, 0.85, 0.75]
 
 
 def place_melody(track, bars, start_bar, voice, octave_shift=0, gain=1.0, pan=0.0, bar_gain=None):
@@ -208,11 +207,9 @@ def place_harmony(track, chords, start_bar, harp_gain, choir_gain, string_gain, 
                 track.add(choir(freq(tone) * 2, BAR), at, choir_gain * g, rng().uniform(-0.5, 0.5))
             if string_gain > 0:
                 track.add(base.strings(freq(tone) * 2, BAR), at, string_gain * g, rng().uniform(-0.4, 0.4))
-        # Волна арфы: вверх по аккорду и обратно, на две октавы выше баса.
-        order = [1, 2, 3, 2, 3, 1]
-        for i, idx in enumerate(order):
-            octave = 2.0 if i in (2, 4) else 1.0
-            track.add(harp(freq(tones[idx]) * 2 * octave, BEAT * 0.5), at + i * BEAT * 0.5, h * g, 0.3 - 0.12 * i)
+        # Арфа редко, по четвертям: вверх по аккорду, на две октавы выше баса.
+        for i, idx in enumerate([1, 2, 3]):
+            track.add(harp(freq(tones[idx]) * 2, BEAT), at + i * BEAT, h * g, 0.25 - 0.2 * i)
 
 
 def place_wind(track, start_bar, bars, gain=1.0):
@@ -235,7 +232,7 @@ INTRO_HARP = 1.0
 def place_intro(track, at_bar, harp_from=None):
     """Арфа, хор и метель без мелодии. Звучит в начале и в конце петли одинаково до сэмпла."""
     base.rng = np.random.default_rng(31)
-    place_harmony(track, THEME_CHORDS[:4], at_bar, INTRO_HARP, 1.0, 0.0, 0.9, harp_from=harp_from)
+    place_harmony(track, THEME_CHORDS[:4], at_bar, INTRO_HARP, 0.8, 0.35, 0.8, harp_from=harp_from)
     # Колокольчики метели: два звона на вступление.
     track.add(bell(freq("B6")), (at_bar + 1) * BAR + BEAT, 0.7, 0.5)
     track.add(bell(freq("E7")), (at_bar + 3) * BAR + 2 * BEAT, 0.5, -0.5)
@@ -249,40 +246,38 @@ def compose():
         # Оба прохода петли одинаковы до сэмпла: хвосты с конца петли совпадают с её началом.
         base.rng = np.random.default_rng(2025)
         start = INTRO_BARS + cycle * LOOP_BARS
-        # A: тема у кларнета; арфа сходит со вступления тише.
-        place_harmony(track, THEME_CHORDS, start, 0.7, 0.55, 0.0, 0.9, harp_from=INTRO_HARP)
-        place_melody(track, THEME, start, clarinet, gain=1.0, pan=0.08)
-        # A2: тема у челесты октавой выше, кларнет отвечает.
-        place_harmony(track, THEME_CHORDS, start + 8, 0.6, 0.6, 0.5, 0.95)
-        place_melody(track, THEME, start + 8, celesta, octave_shift=1, gain=1.0, pan=0.35)
-        place_melody(track, COUNTER, start + 8, clarinet, gain=0.75, pan=-0.2)
-        # B: светлая середина, мелодия у струнных, хор нарастает.
-        place_harmony(track, BRIDGE_CHORDS, start + 16, 0.65, 1.0, 0.7, 1.0)
-        place_melody(track, BRIDGE, start + 16, base.strings, gain=1.6, pan=-0.1)
-        place_melody(track, BRIDGE, start + 16, clarinet, octave_shift=-1, gain=0.45, pan=0.15)
-        # A3: кульминация, затихает к концу.
-        place_harmony(track, THEME_CHORDS, start + 24, 0.75, 1.1, 0.9, 1.1, bar_gain=A3_DYNAMICS)
-        place_melody(track, THEME_OPEN_END, start + 24, base.strings, gain=1.5, pan=-0.1, bar_gain=A3_DYNAMICS)
-        place_melody(track, THEME_OPEN_END, start + 24, clarinet, gain=0.9, pan=0.1, bar_gain=A3_DYNAMICS)
-        place_melody(track, THEME_OPEN_END, start + 24, celesta, octave_shift=1, gain=0.55, pan=0.4, bar_gain=A3_DYNAMICS)
+        # A: тема у челесты; арфа сходит со вступления тише.
+        place_harmony(track, THEME_CHORDS, start, 0.75, 0.7, 0.35, 0.8, harp_from=INTRO_HARP)
+        place_melody(track, THEME, start, celesta, gain=1.05, pan=0.2)
+        # A2: тема у низкого кларнета вполголоса, челеста отвечает подголоском.
+        place_harmony(track, THEME_CHORDS, start + 8, 0.7, 0.75, 0.4, 0.8)
+        place_melody(track, THEME, start + 8, clarinet, octave_shift=-1, gain=0.6, pan=-0.1)
+        place_melody(track, COUNTER, start + 8, celesta, octave_shift=1, gain=0.55, pan=0.4)
+        # B: середина — аккорды и редкие ноты челесты внизу.
+        place_harmony(track, BRIDGE_CHORDS, start + 16, 0.75, 0.85, 0.45, 0.8)
+        place_melody(track, BRIDGE, start + 16, celesta, octave_shift=-1, gain=0.8, pan=-0.2)
+        # A3: тема у челесты и кларнета в унисон, тихо; к концу стихает.
+        place_harmony(track, THEME_CHORDS, start + 24, 0.7, 0.8, 0.4, 0.8, bar_gain=A3_DYNAMICS)
+        place_melody(track, THEME_OPEN_END, start + 24, celesta, gain=0.95, pan=0.2, bar_gain=A3_DYNAMICS)
+        place_melody(track, THEME_OPEN_END, start + 24, clarinet, octave_shift=-1, gain=0.45, pan=-0.1, bar_gain=A3_DYNAMICS)
         # Последняя «ми» тянется через стык и гаснет во вступлении.
-        held = clarinet(freq("E5"), 1.7 * BAR)
+        held = clarinet(freq("E4"), 1.7 * BAR)
         held *= np.clip(1.0 - np.arange(len(held)) / len(held), 0.0, 1.0) ** 1.6
-        track.add(held, (start + 31) * BAR, 0.9 * A3_DYNAMICS[-1], 0.1)
+        track.add(held, (start + 31) * BAR, 0.5 * A3_DYNAMICS[-1], -0.1)
         # Передышка — снова вступление; арфа входит тихо и разгорается.
         place_intro(track, start + 32, harp_from=0.3)
-    place_wind(track, 0, total_bars, 1.0)
+    place_wind(track, 0, total_bars, 0.6)
     return track
 
 
 def master(track):
     # Зал больше, чем у темы меню: снежная тишина звенит дольше.
-    wet_l = base.reverb(track.left, seconds=3.4, seed=3)
-    wet_r = base.reverb(track.right, seconds=3.4, seed=4)
-    left = track.left * 0.74 + wet_l * 0.42
-    right = track.right * 0.74 + wet_r * 0.42
+    wet_l = base.reverb(track.left, seconds=4.2, seed=3)
+    wet_r = base.reverb(track.right, seconds=4.2, seed=4)
+    left = track.left * 0.68 + wet_l * 0.5
+    right = track.right * 0.68 + wet_r * 0.5
     peak = max(np.max(np.abs(left)), np.max(np.abs(right)))
-    left, right = np.tanh(left / peak * 1.2), np.tanh(right / peak * 1.2)
+    left, right = np.tanh(left / peak * 1.05), np.tanh(right / peak * 1.05)
     peak = max(np.max(np.abs(left)), np.max(np.abs(right)))
     return left / peak * 0.89, right / peak * 0.89
 
