@@ -38,7 +38,9 @@ uniform vec2 cam_center = vec2(0.0, 1.6);
 uniform float view_height = 4.4;
 uniform float fade = 0.0;
 uniform float book_taken = 0.0;
+// Книга на столе: 0 — закрыта, 1 — раскрыта; обложка поворачивается на корешке.
 uniform float book_open = 0.0;
+uniform float book_on_table = 0.0;
 // Насколько светится книга на полке: тлеет, когда герой рядом.
 uniform float book_glow = 0.0;
 // Уход в видение, как «Начать путь» на главном экране: от середины расходится
@@ -215,13 +217,40 @@ bool furniture_at(vec2 wp, float grain, inout vec3 col, inout int ramp, inout in
 		col = vec3(1.0, 0.78, 0.40) * 1.3;
 		return true;
 	}
-	// Открытая книга на столе: страницы светлые, переплёт тёмный.
-	if (book_open > 0.5 && wp.x > TABLE_X.x + 0.25 && wp.x < TABLE_X.x + 0.78 && wp.y > TABLE_TOP && wp.y < TABLE_TOP + 0.05) {
-		bool cover = wp.y < TABLE_TOP + 0.015;
-		ramp = cover ? RAMP_PLANK : RAMP_PLANK;
-		level = cover ? 12 : 9;
-		col = cover ? vec3(0.20, 0.24, 0.50) * light * 1.8 : vec3(0.92, 0.86, 0.72) * light * 1.4;
-		return true;
+	// Книга на столе. Корешок — в середине; правая половина — блок страниц под задней
+	// обложкой, передняя обложка с левой половиной страниц поворачивается на корешке:
+	// закрытая лежит поверх правой, раскрытая — слева. Страницы светлые, переплёт синий.
+	if (book_on_table > 0.5) {
+		float spine = TABLE_X.x + 0.515;
+		float half_w = 0.265;
+		vec2 b = wp - vec2(spine, TABLE_TOP);
+		// Неподвижная половина: задняя обложка и страницы.
+		if (b.x > 0.0 && b.x < half_w && b.y > 0.0 && b.y < 0.045) {
+			bool back = b.y < 0.012;
+			ramp = RAMP_PLANK;
+			level = back ? 12 : 9;
+			col = back ? vec3(0.20, 0.24, 0.50) * light * 1.8 : vec3(0.92, 0.86, 0.72) * light * 1.4;
+			return true;
+		}
+		// Поворотная половина: тонкая плита длиной half_w под углом от 0 (закрыта) до π (раскрыта).
+		float angle = PI * book_open;
+		vec2 dir = vec2(cos(angle), sin(angle));
+		vec2 normal = vec2(-dir.y, dir.x);
+		// Ось поворота опускается: раскрытая половина ложится на стол страницами вверх.
+		vec2 q = b - vec2(0.0, mix(0.045, 0.012, book_open));
+		float along = dot(q, dir);
+		float across = dot(q, normal);
+		if (along > 0.0 && along < half_w && across > -0.045 && across < 0.012 && wp.y > TABLE_TOP) {
+			bool cover = across > 0.0;
+			ramp = cover ? RAMP_PLANK : (abs(dir.y) > 0.5 ? RAMP_EDGE : RAMP_PLANK);
+			level = cover ? 12 : (abs(dir.y) > 0.5 ? 0 : 9);
+			col = cover ? vec3(0.20, 0.24, 0.50) * light * 1.8 : vec3(0.92, 0.86, 0.72) * light * 1.4;
+			if (book_open > 0.97) {
+				// Раскрытые страницы чуть светятся: буквы проступают.
+				col = cover ? col : vec3(1.0, 0.92, 0.74) * light * (1.4 + 0.2 * sin(time * 2.0));
+			}
+			return true;
+		}
 	}
 	// Столешница и ножки.
 	if (wp.x > TABLE_X.x && wp.x < TABLE_X.y) {

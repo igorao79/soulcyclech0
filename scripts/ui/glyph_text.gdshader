@@ -11,6 +11,8 @@ const int RAMP_FLAKE = 11;
 
 uniform sampler2D atlas_tex : filter_nearest, repeat_disable;
 uniform sampler2D mask_tex : filter_linear, repeat_disable;
+// Мелкие надписи: без контурных знаков, буква — чёткая масса плотных знаков, как пиксельный шрифт.
+uniform sampler2D small_tex : filter_linear, repeat_disable;
 uniform vec2 cell_px = vec2(5.0, 8.0);
 uniform vec2 screen_px = vec2(1440.0, 810.0);
 uniform float time = 0.0;
@@ -35,6 +37,18 @@ float value_noise(vec2 p) {
 	f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
 		mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+
+vec3 small_cover(vec2 cell) {
+	vec3 sum = vec3(0.0);
+	for (int y = 0; y < 2; y++) {
+		for (int x = 0; x < 2; x++) {
+			vec2 px = (cell + (vec2(float(x), float(y)) + 0.5) / 2.0) * cell_px;
+			sum += texture(small_tex, px / screen_px).rgb;
+		}
+	}
+	return sum / 4.0;
 }
 
 
@@ -138,6 +152,19 @@ void fragment() {
 			level = hash21(id + 21.0) > 0.7 ? 5 : 0;
 			col = below.g > below.r ? vec3(1.0, 0.6, 0.3) * 0.9 : vec3(0.70, 0.76, 1.0) * 0.6;
 		}
+	}
+	// Мелкий текст поверх: ячейка либо целиком буква, либо пустая — без шума по краям.
+	vec3 sk = small_cover(cell);
+	float sc = sk.r + sk.g + sk.b;
+	if (sc > 0.34) {
+		glyph = true;
+		cover = 1.0;
+		ramp = RAMP_DENSE;
+		level = 14 + int(heat * 1.99);
+		hot = sk.g > max(sk.r, sk.b) * 0.9 && sk.g > 0.0;
+		dim = !hot && sk.b > sk.r;
+		col = hot ? mix(vec3(1.0, 0.86, 0.62), ember, smoothstep(0.5, 1.0, heat) * 0.3) * (1.1 + 0.1 * sin(time * 4.0))
+			: mix(silver, lilac, smoothstep(0.4, 0.95, heat) * 0.35);
 	}
 	if (dim && glyph) {
 		col = vec3(0.56, 0.60, 0.78) * (ramp == RAMP_EDGE ? 1.0 : 0.9);

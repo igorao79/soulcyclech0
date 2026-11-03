@@ -33,8 +33,9 @@ const BASE_FONT_SIZE := 8
 const VIEW_HEIGHT := 4.4
 const CAMERA_Y := 1.55
 # Те же числа, что в library.gdshader: края комнаты, книга на полке, стул.
-const ROOM := Vector2(-6.9, 8.1)
-const CAMERA_LIMIT := Vector2(-3.6, 4.6)
+# Справа путь упирается в стул и стол: мимо не пройти.
+const ROOM := Vector2(-6.9, 3.25)
+const CAMERA_LIMIT := Vector2(-3.6, 3.8)
 const BOOK_X := -1.32
 const SEAT_X := 3.12
 const START_X := -6.5
@@ -73,7 +74,7 @@ const SPEAKERS := {
 	&"nameless": ["Безымянный", Color(0.86, 0.89, 0.98)],
 }
 
-enum State { ENTER, WALK, TAKING, TO_SEAT, SITTING, READING, TO_VISION, VISION, OUT }
+enum State { ENTER, WALK, TAKING, TO_SEAT, SITTING, OPENING, READING, TO_VISION, VISION, OUT }
 
 var library_material: ShaderMaterial
 var vision_material: ShaderMaterial
@@ -99,6 +100,8 @@ var chair := 0.0
 var holding := false
 var taken := false
 var book_open := false
+var book_lid := 0.0
+const OPEN_TIME := 1.8
 var fade := 1.0
 var vision_fade := 0.0
 var outro := 0.0
@@ -213,8 +216,15 @@ func _process(delta: float) -> void:
 			var t := clampf(state_time / SIT_TIME, 0.0, 1.0)
 			chair = t * t * (3.0 - 2.0 * t)
 			if t >= 1.0:
+				# Кладёт книгу на стол — и раскрывает её.
 				holding = false
 				book_open = true
+				_go(State.OPENING)
+		State.OPENING:
+			# Обложка поднимается медленно, переваливает через корешок и ложится.
+			var o := clampf((state_time - 0.5) / OPEN_TIME, 0.0, 1.0)
+			book_lid = o * o * (3.0 - 2.0 * o)
+			if state_time > OPEN_TIME + 0.8:
 				_go(State.READING)
 		State.READING:
 			if state_time > 0.9 and not talking and _after_lines.is_null():
@@ -368,7 +378,8 @@ func _push() -> void:
 	m.set_shader_parameter("player_book", 1.0 if holding else 0.0)
 	m.set_shader_parameter("coat_lag", Vector2(0.0, coat))
 	m.set_shader_parameter("book_taken", 1.0 if taken else 0.0)
-	m.set_shader_parameter("book_open", 1.0 if book_open else 0.0)
+	m.set_shader_parameter("book_on_table", 1.0 if book_open else 0.0)
+	m.set_shader_parameter("book_open", book_lid)
 	m.set_shader_parameter("outro", outro)
 	# Книга тлеет всегда, а когда герой рядом — разгорается.
 	var near := 1.0 - smoothstep(0.4, 3.0, absf(x - BOOK_X))

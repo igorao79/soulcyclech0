@@ -36,7 +36,7 @@ const STAND_TIME := 2.9
 const STRETCH_TIME := 2.8
 const LOOK_TIME := 1.6
 const TO_TOP_TIME := 1.4
-const TURN_TIME := 0.9
+const TURN_TIME := 1.5
 const WALK_SPEED := 0.95
 # Совпадает с GAIT_REACH * FIGURE_SCALE / GAIT_STANCE в ascii_figures.gdshaderinc.
 const STEP_LENGTH := 0.68
@@ -246,25 +246,41 @@ func _looking() -> void:
 		_go(Beat.TALK)
 
 
+# Разворот шагами, как человек: корпус поворачивается вслед за ногами, первые шаги
+# короткие, почти на месте, и уже во второй половине поворота он трогается вперёд.
 func _turning() -> void:
+	var delta := get_process_delta_time()
 	var t := clampf(beat_time / TURN_TIME, 0.0, 1.0)
 	hero_yaw = lerp_angle(turn_from, YAW_WALK, _ease(t))
-	lean = lean.lerp(Vector2.ZERO, 0.1)
+	move = move_toward(move, 0.4, delta * 1.2)
+	var drift := WALK_SPEED * 0.35 * smoothstep(0.4, 1.0, t)
+	var before := hero_x
+	hero_x += drift * delta
+	# Переступает: фаза шага идёт и без продвижения, но медленнее.
+	var previous := phase
+	phase += ((hero_x - before) * PI / STEP_LENGTH) + delta * 2.6 * (1.0 - smoothstep(0.5, 1.0, t))
+	if floori((phase + STEP_LEAD) / PI) != floori((previous + STEP_LEAD) / PI):
+		_play_step()
+	lean = lean.lerp(Vector2(0.0, 0.03), 1.0 - exp(-delta * 3.0))
 	if t >= 1.0:
 		_go(Beat.WALKING)
 
 
 # Уходит по ровному берегу; под конец кадр гаснет и открывается вид сверху.
 func _walking(delta: float) -> void:
-	# Разгоняется не сразу: первые шаги короткие и неспешные.
-	move = move_toward(move, 1.0, delta * 0.9)
+	# Разгоняется не сразу; шаг живой: скорость чуть плавает, корпус покачивается.
+	move = move_toward(move, 1.0, delta * 0.7)
+	var pace := 1.0 + 0.06 * sin(elapsed * 0.9) + 0.03 * sin(elapsed * 2.3 + 1.0)
 	var before := hero_x
-	hero_x += WALK_SPEED * move * delta
+	hero_x += WALK_SPEED * move * pace * delta
 	var previous := phase
 	phase += (hero_x - before) * PI / STEP_LENGTH
 	if floori((phase + STEP_LEAD) / PI) != floori((previous + STEP_LEAD) / PI):
 		_play_step()
-	lean = lean.lerp(Vector2(0.0, 0.05 * move), 1.0 - exp(-delta * 4.0))
+	var sway := 0.015 * sin(phase)
+	lean = lean.lerp(Vector2(sway, 0.045 * move + 0.01 * sin(phase * 2.0)), 1.0 - exp(-delta * 4.0))
+	# Голову и плечи чуть разворачивает к озеру, пока идёт.
+	hero_yaw = lerp_angle(hero_yaw, YAW_WALK - 0.08 * sin(elapsed * 0.4), 1.0 - exp(-delta * 2.0))
 	if beat_time > WALK_TIME:
 		_go(Beat.TO_TOP)
 
