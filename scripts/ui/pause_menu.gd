@@ -73,16 +73,16 @@ func _ready() -> void:
 	_build_arch_atlas()
 
 	_menu = AsciiMenu.new()
-	_menu.heading = "Пауза"
+	_menu.heading = "Затишье"
 	_menu.heading_size = 40.0
 	_menu.columns = 30
 	_menu.spacing = 2
 	# Чуть ниже середины: над меню висят луна и колокол арки.
 	_menu.center = Vector2(0.5, 0.56)
-	_menu.add_button(&"resume", "продолжить")
+	_menu.add_button(&"resume", "продолжить путь")
 	_menu.add_button(&"settings", "настройки")
-	_menu.add_button(&"title", "главное меню")
-	_menu.add_button(&"quit", "выйти из игры")
+	_menu.add_button(&"title", "закрыть книгу")
+	_menu.add_button(&"quit", "проснуться")
 	_menu.activated.connect(_on_menu)
 	_menu.cancelled.connect(close)
 	_root.add_child(_menu)

@@ -4,11 +4,13 @@ extends Node
 # Свои скрипты подключены по пути, а не по имени класса: игра, запущенная без редактора,
 # не всегда знает новые глобальные классы, и сцена падала при переходе.
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
+const DialogueView := preload("res://scripts/ui/dialogue_view.gd")
 
 # Глава первая, «Звездопад».
 # 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном берегу над озером,
-#    над ним идёт звездопад. Под конец болид, он встаёт, поворачивается и уходит по ровной
-#    тропе вдоль берега; камера ведёт его, и кадр гаснет.
+#    над ним идёт звездопад. Под конец болид. Он тяжело встаёт, потягивается, оглядывается
+#    на озеро и небо, говорит пару слов — и неторопливо уходит по ровной тропе вдоль берега;
+#    камера ведёт его, и кадр гаснет.
 # 2. Вид сверху со свободным управлением (движок ASCII-ночи, раскладка «тропа у озера»):
 #    он стоит на тропе у воды, вспоминает о смене в библиотеке, и игрок ведёт его через
 #    ельник в городок с каменными домиками, по улице к библиотеке.
@@ -30,16 +32,19 @@ const SIT_X := 2.4
 # Сидя он смотрит на озеро и чуть от нас.
 const YAW_SIT := -2.1
 const CUTSCENE_TIME := 15.0
-const STAND_TIME := 2.0
+const STAND_TIME := 2.9
+const STRETCH_TIME := 2.8
+const LOOK_TIME := 1.6
 const TO_TOP_TIME := 1.4
 const TURN_TIME := 0.9
-const WALK_SPEED := 1.05
+const WALK_SPEED := 0.95
 # Совпадает с GAIT_REACH * FIGURE_SCALE / GAIT_STANCE в ascii_figures.gdshaderinc.
 const STEP_LENGTH := 0.68
 # Шаг звучит чуть раньше касания: у записи удар не в самом начале, плюс задержка звука.
 const STEP_LEAD := 0.35
-# Идёт вправо, вполоборота к нам.
+# Идёт вправо, вполоборота к нам; оглядываясь, смотрит на нас и чуть вверх, на небо.
 const YAW_WALK := PI * 0.5 - 0.35
+const YAW_LOOK := -0.55
 const WALK_TIME := 6.5
 const SNOW_STEPS: Array[AudioStream] = [
 	preload("res://assets/audio/footsteps/snow_01.wav"),
@@ -49,15 +54,20 @@ const SNOW_STEPS: Array[AudioStream] = [
 const DOOR_REACH := 2.2
 const TO_LIBRARY_TIME := 1.4
 
-const CHAPTER_LABEL := "Глава первая"
+const CHAPTER_LABEL := "глава I"
+const SCRAMBLE := "#%&@$*+=-:;!?/\\|<>~^"
 const CHAPTER_NAME := "Звездопад"
+# На берегу, встав и оглянувшись на небо.
+const SHORE_LINES: Array[String] = [
+	"…Падают. А загадать всё так же нечего.",
+	"Пора.",
+]
+# Сверху, на тропе.
 const LINES: Array[Dictionary] = [
-	{"speaker": &"nameless", "text": "Опять звездопад. Каждый год в эту ночь — и каждый раз будто впервые."},
-	{"speaker": &"nameless", "text": "…Уже совсем поздно. Пора закругляться."},
-	{"speaker": &"nameless", "text": "До рассвета моя смена в библиотеке. Через ельник, а там по городу — успею."},
+	{"speaker": &"nameless", "text": "Смена в библиотеке до рассвета. Через ельник — успею."},
 ]
 
-enum Beat { CARD, SITTING, STANDING, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
+enum Beat { CARD, SITTING, STANDING, STRETCH, LOOK, TALK, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
 
 const SILVER := Color(0.86, 0.89, 0.98)
 const BONE := Color(0.95, 0.91, 0.84)
@@ -85,6 +95,11 @@ var hero_yaw := YAW_SIT
 var phase := 0.0
 var move := 0.0
 var step_player: AudioStreamPlayer
+var stretch := 0.0
+var mono_font: Font
+var shore_line := 0
+var shore_typed := 0.0
+var turn_from := YAW_SIT
 var cam := Vector2(SIT_X - 2.4, 1.3)
 var view := 7.4
 var fade := 1.0
@@ -101,6 +116,7 @@ func _ready() -> void:
 	serif = UiStyle.serif(600.0)
 	_build_audio()
 	var mono := FontAtlas.create_font()
+	mono_font = mono
 	var font_size := roundi(BASE_FONT_SIZE * DisplayServer.screen_get_scale())
 	var cell := FontAtlas.measure_cell(mono, font_size)
 	var atlas := await FontAtlas.build(self, mono, font_size, cell)
@@ -135,6 +151,12 @@ func _process(delta: float) -> void:
 				_go(Beat.STANDING)
 		Beat.STANDING:
 			_standing()
+		Beat.STRETCH:
+			_stretching()
+		Beat.LOOK:
+			_looking()
+		Beat.TALK:
+			shore_typed = minf(shore_typed + delta * 36.0, SHORE_LINES[shore_line].length())
 		Beat.TURNING:
 			_turning()
 		Beat.WALKING:
@@ -156,14 +178,32 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not drawing or beat != Beat.SITTING or beat_time < 2.0:
-		return
 	var key := event as InputEventKey
 	var skip := key != null and key.pressed and not key.echo and key.physical_keycode in [KEY_E, KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]
+	if drawing and beat == Beat.TALK and (skip or event.is_action_pressed("ui_accept")):
+		get_viewport().set_input_as_handled()
+		# Первое нажатие допечатывает реплику, второе листает дальше.
+		if shore_typed < SHORE_LINES[shore_line].length():
+			shore_typed = SHORE_LINES[shore_line].length()
+			return
+		shore_line += 1
+		shore_typed = 0.0
+		if shore_line >= SHORE_LINES.size():
+			turn_from = hero_yaw
+			_go(Beat.TURNING)
+		return
+	if not drawing or beat != Beat.SITTING or beat_time < 2.0:
+		return
 	if skip or event.is_action_pressed("ui_accept"):
 		# Заставку можно пропустить: он просто встаёт раньше.
 		_go(Beat.STANDING)
 		get_viewport().set_input_as_handled()
+
+
+# Пауза перерисовывает надписи: под меню их не видно, после паузы они возвращаются.
+func _notification(what: int) -> void:
+	if (what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED) and overlay != null:
+		overlay.queue_redraw()
 
 
 func _go(next: Beat) -> void:
@@ -171,19 +211,44 @@ func _go(next: Beat) -> void:
 	beat_time = 0.0
 
 
-# Вставая, корпус уходит вперёд над стопами и выпрямляется.
+# Встаёт с усилием: сначала подаётся вперёд, перенося вес на ступни, потом поднимается,
+# под конец чуть откидывается и выпрямляется.
 func _standing() -> void:
 	fade = 0.0
-	var t := clampf(beat_time / STAND_TIME, 0.0, 1.0)
-	sit = 1.0 - _ease(t)
-	lean = Vector2(0.0, sin(t * PI) * 0.26)
-	if beat_time > STAND_TIME + 0.3:
-		_go(Beat.TURNING)
+	var t := beat_time
+	var rise := smoothstep(0.75, 2.3, t)
+	sit = lerpf(1.0, 0.9, smoothstep(0.0, 0.75, t)) * (1.0 - rise)
+	var forward := 0.34 * smoothstep(0.0, 0.8, t) * (1.0 - smoothstep(1.3, 2.4, t))
+	var settle := -0.04 * sin(clampf((t - 2.2) / 0.7, 0.0, 1.0) * PI)
+	lean = Vector2(0.0, forward + settle)
+	if t > STAND_TIME:
+		_go(Beat.STRETCH)
+
+
+# Потягивается: руки над головой, прогибается, выдыхает и опускает руки.
+func _stretching() -> void:
+	var t := beat_time
+	stretch = smoothstep(0.0, 1.0, t) * (1.0 - smoothstep(1.6, STRETCH_TIME, t))
+	lean = Vector2(0.0, -0.05 * stretch)
+	if t > STRETCH_TIME + 0.2:
+		stretch = 0.0
+		_go(Beat.LOOK)
+
+
+# Оглядывается через плечо на озеро и небо.
+func _looking() -> void:
+	var t := clampf(beat_time / LOOK_TIME, 0.0, 1.0)
+	hero_yaw = lerp_angle(YAW_SIT, YAW_LOOK, _ease(t))
+	lean = lean.lerp(Vector2.ZERO, 0.1)
+	if beat_time > LOOK_TIME + 0.4:
+		shore_line = 0
+		shore_typed = 0.0
+		_go(Beat.TALK)
 
 
 func _turning() -> void:
 	var t := clampf(beat_time / TURN_TIME, 0.0, 1.0)
-	hero_yaw = lerp_angle(YAW_SIT, YAW_WALK, _ease(t))
+	hero_yaw = lerp_angle(turn_from, YAW_WALK, _ease(t))
 	lean = lean.lerp(Vector2.ZERO, 0.1)
 	if t >= 1.0:
 		_go(Beat.WALKING)
@@ -191,7 +256,8 @@ func _turning() -> void:
 
 # Уходит по ровному берегу; под конец кадр гаснет и открывается вид сверху.
 func _walking(delta: float) -> void:
-	move = move_toward(move, 1.0, delta * 2.0)
+	# Разгоняется не сразу: первые шаги короткие и неспешные.
+	move = move_toward(move, 1.0, delta * 0.9)
 	var before := hero_x
 	hero_x += WALK_SPEED * move * delta
 	var previous := phase
@@ -296,13 +362,14 @@ func _follow_camera() -> void:
 	elif beat == Beat.SITTING:
 		t = _ease(clampf(beat_time / CUTSCENE_TIME, 0.0, 1.0))
 	var seated := Vector2(SIT_X - 2.4, 1.3).lerp(Vector2(SIT_X - 0.9, 1.25), t)
-	if beat in [Beat.CARD, Beat.SITTING, Beat.STANDING]:
+	if beat in [Beat.CARD, Beat.SITTING]:
 		cam = seated
 		view = lerpf(7.4, 5.4, t)
 		return
-	var k := 1.0 - exp(-get_process_delta_time() * 1.6)
-	cam = cam.lerp(Vector2(hero_x + 0.9, ground_height(hero_x) + 1.0), k)
-	view = lerpf(view, 5.8, k)
+	# Дальше камера плавно садится на героя и держит его в центре кадра.
+	var k := 1.0 - exp(-get_process_delta_time() * 1.4)
+	cam = cam.lerp(Vector2(hero_x + 0.15 * move, ground_height(hero_x) + 0.95), k)
+	view = lerpf(view, 5.2, k)
 
 
 func _push_uniforms() -> void:
@@ -317,6 +384,7 @@ func _push_uniforms() -> void:
 	m.set_shader_parameter("player_move", move)
 	m.set_shader_parameter("player_lean", lean)
 	m.set_shader_parameter("player_sit", sit)
+	m.set_shader_parameter("player_stretch", stretch)
 	m.set_shader_parameter("coat_lag", Vector2.ZERO)
 	# Звёзды падают всё чаще, пока он сидит.
 	var rate := 0.7
@@ -369,16 +437,49 @@ func _fit() -> void:
 
 
 func _draw_overlay() -> void:
+	# Под паузой надписи главы не просвечивают сквозь меню.
+	if get_tree().paused:
+		return
 	var size := overlay.get_rect().size
 	var scale := size.y / UiStyle.LOGICAL_HEIGHT
+	if beat == Beat.TALK:
+		DialogueView.draw(
+			overlay, mono_font, serif, "Безымянный", SILVER, SHORE_LINES[shore_line], int(shore_typed), elapsed
+		)
 	if beat == Beat.CARD:
 		var alpha := clampf((beat_time - 0.6) / 0.9, 0.0, 1.0) * clampf((4.2 - beat_time) / 0.9, 0.0, 1.0)
 		if alpha > 0.0:
-			_draw_spaced(CHAPTER_LABEL, size * Vector2(0.5, 0.42), roundi(18 * scale), Color(SILVER, alpha * 0.8), 0.32)
-			_draw_spaced(CHAPTER_NAME, size * Vector2(0.5, 0.53), roundi(46 * scale), Color(BONE, alpha), 0.12)
-			_draw_rule(Vector2(size.x * 0.5, size.y * 0.585), 70.0 * scale, scale, alpha)
+			# Как пункты меню: буквы собираются из шума слева направо и так же рассыпаются.
+			var label_size := roundi(13 * scale)
+			_draw_decoded(mono_font, CHAPTER_LABEL, size * Vector2(0.5, 0.43), label_size, Color(SILVER, alpha * 0.75), 0.6, 0.5, 0.9)
+			_draw_decoded(serif, CHAPTER_NAME, size * Vector2(0.5, 0.53), roundi(46 * scale), Color(BONE, alpha), 0.12, 0.9, 1.1)
+			_draw_rule(Vector2(size.x * 0.5, size.y * 0.585), 70.0 * scale * clampf((beat_time - 1.6) / 0.8, 0.0, 1.0), scale, alpha)
 	elif beat == Beat.ENDING and end_alpha > 0.0:
 		_draw_spaced("продолжение следует", size * Vector2(0.5, 0.5), roundi(20 * scale), Color(SILVER, end_alpha), 0.18)
+
+
+# Надпись вразрядку, буква за буквой проступает из мечущихся знаков шума (красноватых),
+# а перед уходом карточки снова рассыпается в шум.
+func _draw_decoded(font: Font, text: String, center: Vector2, font_size: int, color: Color, tracking: float,
+		start: float, span: float) -> void:
+	var width := 0.0
+	for i in range(text.length()):
+		width += font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + font_size * tracking
+	width -= font_size * tracking
+	var x := center.x - width * 0.5
+	for i in range(text.length()):
+		var letter := text[i]
+		var step := font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + font_size * tracking
+		var settle := start + span * float(i) / maxf(text.length(), 1.0)
+		var scatter := 3.4 + 0.4 * float(i) / maxf(text.length(), 1.0)
+		if letter != " " and (beat_time < settle or beat_time > scatter):
+			if beat_time > settle - 0.5 or beat_time > scatter:
+				var noise := SCRAMBLE[(i * 7 + int(elapsed * 24.0)) % SCRAMBLE.length()]
+				mono_font.draw_string(overlay.get_canvas_item(), Vector2(x + step * 0.2, center.y).floor(), noise,
+					HORIZONTAL_ALIGNMENT_LEFT, -1, roundi(font_size * 0.6), Color(0.78, 0.30, 0.36, color.a))
+		else:
+			font.draw_string(overlay.get_canvas_item(), Vector2(x, center.y).floor(), letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
+		x += step
 
 
 func _draw_spaced(text: String, center: Vector2, font_size: int, color: Color, tracking: float) -> void:

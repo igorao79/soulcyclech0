@@ -83,6 +83,8 @@ uniform float player_sit = 0.0;
 uniform float player_chair = 0.0;
 // 1 — несёт книгу в правой руке.
 uniform float player_book = 0.0;
+// 1 — потягивается: руки над головой, корпус прогнут назад.
+uniform float player_stretch = 0.0;
 uniform vec2 player_lean = vec2(0.0);
 uniform vec2 coat_lag = vec2(0.0);
 uniform int player_style = 0;

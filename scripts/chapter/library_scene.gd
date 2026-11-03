@@ -21,6 +21,8 @@ const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
 const LIBRARY_SHADER := preload("res://scripts/chapter/library.gdshader")
 const VISION_SHADER := preload("res://scripts/chapter/vision.gdshader")
 const VISION_ART := preload("res://assets/chapter/vision.jpg")
+# Тема видения собрана генератором tools/compose_vision_theme.py, петля — весь файл.
+const VISION_MUSIC := preload("res://assets/music/vision_theme.ogg")
 const STEPS: Array[AudioStream] = [
 	preload("res://assets/audio/footsteps/wood_01.wav"),
 	preload("res://assets/audio/footsteps/wood_02.wav"),
@@ -47,21 +49,21 @@ const SIT_TIME := 1.3
 const OUTRO_TIME := 1.1
 const MUSIC_FADE := 2.5
 # Оглавление книги: вписан только первый том.
-const VOLUMES: Array[String] = ["Том I · Звездопад", "Том II · · · ·", "Том III · · · ·"]
+const VOLUMES: Array[String] = ["Том первый. Звездопад", "Том второй. страницы пусты", "Том третий. страницы пусты"]
 # Взгляд вправо и чуть на зрителя; за столом — строго на столешницу.
 const FACE_RIGHT := PI * 0.5 - 0.4
 const FACE_LEFT := -PI * 0.5 + 0.4
 const FACE_TABLE := PI * 0.5
 
 const ENTER_LINES: Array[Dictionary] = [
-	{"speaker": &"nameless", "text": "Тихо. Только свечи и пыль — как всегда в мою смену."},
-	{"speaker": &"nameless", "text": "Опись подождёт. Сначала та книга у фонаря — третий день не даёт покоя."},
+	{"speaker": &"nameless", "text": "Свечи ещё горят. Значит, не опоздал."},
+	{"speaker": &"nameless", "text": "…Та книга у фонаря опять светится."},
 ]
 const BOOK_LINES: Array[Dictionary] = [
-	{"speaker": &"nameless", "text": "«Цикл душ». Ни автора, ни года. Не помню, чтобы её кто-то сдавал."},
+	{"speaker": &"nameless", "text": "«Цикл душ». Ни автора, ни года."},
 ]
 const READ_LINES: Array[Dictionary] = [
-	{"speaker": &"nameless", "text": "Страницы пустые… Нет. Буквы проступают, пока я смотрю."},
+	{"speaker": &"nameless", "text": "Пусто… Нет. Буквы проступают."},
 ]
 const SPEAKERS := {
 	&"nameless": ["Безымянный", Color(0.86, 0.89, 0.98)],
@@ -99,6 +101,7 @@ var outro := 0.0
 ## Музыка главы: глава отдаёт её сюда, чтобы она стихла, когда герой сядет за стол.
 var music: AudioStreamPlayer
 var save_menu: AsciiMenu
+var vision_music: AudioStreamPlayer
 
 var lines: Array = []
 var line_index := 0
@@ -215,16 +218,25 @@ func _process(delta: float) -> void:
 			if state_time >= OUTRO_TIME + 0.5:
 				library_rect.hide()
 				vision_rect.show()
+				_start_vision_music()
 				_go(State.VISION)
 		State.VISION:
 			_vision()
 		State.OUT:
 			vision_fade = clampf(state_time / 2.0, 0.0, 1.0)
+			if vision_music != null:
+				vision_music.volume_db = lerpf(-12.0, -60.0, vision_fade)
 			if state_time > 2.2:
 				set_process(false)
 				finished.emit()
 	_push()
 	overlay.queue_redraw()
+
+
+# Под паузой реплики не просвечивают сквозь меню.
+func _notification(what: int) -> void:
+	if (what == NOTIFICATION_PAUSED or what == NOTIFICATION_UNPAUSED) and overlay != null:
+		overlay.queue_redraw()
 
 
 func _go(next: State) -> void:
@@ -237,6 +249,19 @@ func _start_reading() -> void:
 	var director := get_node_or_null("/root/SoundDirector")
 	if director != null:
 		director.toll(-6.0)
+
+
+# Тема видения входит из тишины, пока загораются глаза.
+func _start_vision_music() -> void:
+	var looped := VISION_MUSIC.duplicate() as AudioStreamOggVorbis
+	looped.loop = true
+	vision_music = AudioStreamPlayer.new()
+	vision_music.stream = looped
+	vision_music.bus = &"Music"
+	vision_music.volume_db = -50.0
+	add_child(vision_music)
+	vision_music.play()
+	create_tween().tween_property(vision_music, "volume_db", -12.0, 4.0).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
 
 
 # Когда герой садится за стол, музыка улицы уходит совсем: остаются свеча и тишина.
@@ -376,6 +401,8 @@ func _advance_lines(delta: float) -> void:
 
 
 func _draw_overlay() -> void:
+	if get_tree().paused:
+		return
 	if not lines.is_empty():
 		var line: Dictionary = lines[line_index]
 		var speaker: Array = SPEAKERS.get(line["speaker"], SPEAKERS[&"nameless"])

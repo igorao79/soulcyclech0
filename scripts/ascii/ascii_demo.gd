@@ -580,8 +580,10 @@ func _update_timers(delta: float) -> void:
 
 
 # Камера жёстко держит героя в центре: плавность даёт разгон и торможение самого героя.
+# Камера смотрит туда, где на экране стоят его ступни: на возвышенности (городок выше озера)
+# точка у подножия уезжает вниз на высоту × ctg(наклона), поэтому центр сдвигаем на неё же.
 func _update_camera() -> void:
-	camera_position = player_position
+	camera_position = player_position - Vector2(0.0, player_height * cos(CAMERA_TILT) / sin(CAMERA_TILT))
 
 
 func _update_hud() -> void:

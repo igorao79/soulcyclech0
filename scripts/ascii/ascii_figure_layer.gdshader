@@ -38,7 +38,8 @@ void fragment() {
 	vec3 ground = vec3(
 		player_pos.x + offset.x * cell_world.x,
 		0.0,
-		player_pos.z + offset.y * cell_world.y / cam_sin
+		// Слой центрирован там же, где камера: на точке, куда проецируются ступни героя.
+		player_pos.z - player_pos.y * cam_cos / cam_sin + offset.y * cell_world.y / cam_sin
 	);
 	float t_ground = HEAD_ROOM / cam_sin;
 	vec3 ro = ground - rd * t_ground;

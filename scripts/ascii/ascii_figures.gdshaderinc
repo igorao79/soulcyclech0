@@ -121,6 +121,10 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 	q.z -= sit * 0.22 * max(q.y - 0.9, 0.0);
 	// За столом чуть подаётся к столешнице.
 	q.z -= chair * 0.14 * max(q.y - 0.9, 0.0);
+	// Потягиваясь, прогибается назад и чуть привстаёт.
+	float stretch = player_stretch;
+	q.z += stretch * 0.12 * max(q.y - 0.9, 0.0);
+	q.y -= stretch * 0.025;
 	twist_upper_body(q, phase, amount, bob);
 	vec2 wind = local_wind();
 
@@ -156,10 +160,18 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 	hand_r = mix(hand_r, vec3(0.16, 1.30, 0.50), chair);
 	// Книга прижата к боку правой рукой.
 	hand_r = mix(hand_r, vec3(0.27, 0.86, 0.10), player_book * (1.0 - chair));
-	take(d, m, sd_capsule(q, vec3(-0.235, 1.26, 0.0), hand_l + vec3(0.0, 0.08, 0.0), 0.095), MAT_COAT);
-	take(d, m, sd_capsule(q, vec3(0.235, 1.26, 0.0), hand_r + vec3(0.0, 0.08, 0.0), 0.095), MAT_COAT);
-	take(d, m, sd_capsule(q, hand_l + vec3(0.0, 0.09, 0.0), hand_l + vec3(0.0, 0.15, 0.0), 0.112), MAT_COAT);
-	take(d, m, sd_capsule(q, hand_r + vec3(0.0, 0.09, 0.0), hand_r + vec3(0.0, 0.15, 0.0), 0.112), MAT_COAT);
+	// Потягиваясь, тянет руки над головой, кисти сходятся.
+	hand_l = mix(hand_l, vec3(-0.13, 2.05, -0.04), stretch);
+	hand_r = mix(hand_r, vec3(0.13, 2.05, -0.04), stretch);
+	vec3 shoulder_l = vec3(-0.235, 1.26, 0.0);
+	vec3 shoulder_r = vec3(0.235, 1.26, 0.0);
+	// Отворот рукава — со стороны плеча от кисти, куда бы ни смотрела рука.
+	vec3 up_l = normalize(shoulder_l - hand_l);
+	vec3 up_r = normalize(shoulder_r - hand_r);
+	take(d, m, sd_capsule(q, shoulder_l, hand_l + up_l * 0.08, 0.095), MAT_COAT);
+	take(d, m, sd_capsule(q, shoulder_r, hand_r + up_r * 0.08, 0.095), MAT_COAT);
+	take(d, m, sd_capsule(q, hand_l + up_l * 0.09, hand_l + up_l * 0.15, 0.112), MAT_COAT);
+	take(d, m, sd_capsule(q, hand_r + up_r * 0.09, hand_r + up_r * 0.15, 0.112), MAT_COAT);
 	take(d, m, length(q - hand_l) - 0.062, MAT_SKIN);
 	take(d, m, length(q - hand_r) - 0.062, MAT_SKIN);
 	if (player_book > 0.5 && chair < 0.5) {
@@ -168,8 +180,9 @@ void sd_nameless(vec3 q, float phase, float amount, inout float d, inout int m) 
 	}
 
 	vec3 head = turn_head(q, amount, 0.0);
-	// За столом голова склонена к книге.
+	// За столом голова склонена к книге, потягиваясь — запрокинута.
 	head.z -= chair * 0.32 * max(head.y - 1.3, 0.0);
+	head.z += stretch * 0.22 * max(head.y - 1.3, 0.0);
 	take(d, m, length((head - vec3(0.0, 1.56, 0.03)) * vec3(0.92, 1.0, 1.0)) - 0.2, MAT_SKIN);
 	// Пряди сносит ветром и шагом: концы двигаются сильнее макушки.
 	float sway = smoothstep(1.78, 1.36, head.y);
