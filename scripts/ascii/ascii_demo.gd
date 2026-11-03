@@ -263,6 +263,7 @@ func _push_static_uniforms() -> void:
 	_set_scene_parameter("prop_map", world.prop_texture)
 	_set_scene_parameter("world_size", AsciiWorld.SIZE)
 	_set_scene_parameter("ruins_on", 1.0 if world.layout == &"crossroads" else 0.0)
+	_set_scene_parameter("sea_on", 1.0 if world.island else 0.0)
 	_set_scene_parameter("cam_sin", sin(CAMERA_TILT))
 	_set_scene_parameter("cam_cos", cos(CAMERA_TILT))
 	_set_scene_parameter("keeper_pos", _far_or_ground(world.keeper))

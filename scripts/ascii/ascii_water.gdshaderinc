@@ -107,6 +107,32 @@ void water_marks(vec2 wc, float row, out int mark, out float glow) {
 }
 
 
+// Океан: длинные валы катятся к берегу с юго-запада, на гребнях рвётся пена.
+void sea_marks(vec2 wc, vec3 p, float row, out int mark, out float glow) {
+	mark = 0;
+	glow = 0.0;
+	float front = dot(p.xz, vec2(0.62, -0.78));
+	float bend = value_noise(p.xz * 0.05 + vec2(time * 0.012, 0.0)) * 5.0;
+	float crest = sin(front * 0.7 - time * 0.55 + bend);
+	if (crest < 0.72) {
+		// Между валами вода не гладкая: редкая короткая зыбь.
+		if (hash21(vec2(floor(wc.x / 4.0), row) + floor(time * 0.3)) < 0.1) {
+			mark = W_DASH;
+			glow = 0.34;
+		}
+		return;
+	}
+	float torn = value_noise(vec2(wc.x * 0.09 + time * 0.1, row * 0.5));
+	if (torn < 0.34) {
+		return;
+	}
+	float foam = crest > 0.93 ? 1.0 : 0.0;
+	float pick = hash21(vec2(floor(wc.x / 2.0), row + 4.0));
+	mark = foam > 0.5 ? (pick < 0.5 ? W_TILDE : W_EQUAL) : (pick < 0.65 ? W_TILDE : W_DASH);
+	glow = 0.62 + foam * 0.65;
+}
+
+
 // Глаза эха считаются прямо по ровному лучу: тонкая прорезь не проваливается между строками и не расходится.
 float wraith_eyes(vec3 p, vec3 rd, float sway) {
 	float t = (wraith_pos.z + 0.24 * FIGURE_SCALE - p.z) / rd.z;
@@ -179,7 +205,17 @@ void shade_water(vec3 p, vec3 rd, vec2 wc, out vec3 col, out int ramp, out int l
 
 	int mark = 0;
 	float glow = 0.0;
-	if (shallow > 0.08) {
+	if (sea_on > 0.5 && shallow > 0.08) {
+		// Прибой: пена набегает на кромку и откатывается.
+		float surge = sin(time * 0.7 + value_noise(p.xz * 0.12) * 6.0) * 0.5 + 0.5;
+		if (shallow > 0.55 - surge * 0.4 && hash21(vec2(floor(wc.x / 2.0), row) + floor(time * 1.2 + cell_hash)) < 0.62) {
+			float pick = hash21(wc + vec2(6.0, 3.0));
+			mark = pick < 0.45 ? W_TILDE : (pick < 0.75 ? W_EQUAL : W_STAR);
+			glow = 1.0 + surge * 0.35;
+		}
+	} else if (sea_on > 0.5) {
+		sea_marks(wc, p, row, mark, glow);
+	} else if (shallow > 0.08) {
 		float wash = hash21(vec2(floor(wc.x / 3.0), row) + floor(time * 0.35 + cell_hash * 0.4));
 		if (shallow > 0.82 && wash < 0.42) {
 			mark = wash < 0.2 ? W_TILDE : W_DASH;

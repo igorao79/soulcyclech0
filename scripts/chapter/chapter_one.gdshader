@@ -1,6 +1,6 @@
 // Глава первая: вид сбоку, целиком из символов атласа.
-// Ночное небо со звездопадом, горы за озером, озеро отражает небо, снежный склон
-// с тропинкой, ели наверху и огонёк дома. Безымянный — та же SDF-фигура, что в ASCII-ночи,
+// Ночное небо со звездопадом, открытый океан до горизонта отражает небо, снежный склон
+// острова с тропинкой, ели наверху и огонёк дома. Безымянный — та же SDF-фигура, что в ASCII-ночи,
 // снятая ортографической камерой сбоку.
 shader_type canvas_item;
 render_mode blend_disabled, unshaded;
@@ -38,7 +38,7 @@ float fbm(vec2 p) {
 // Берег: из-под воды слева невысокий откос, дальше вправо ровная снежная тропа.
 float ground_height(float x) {
 	float bank = 0.9 * smoothstep(-1.5, 4.0, x) - 0.35 + 0.05 * sin(x * 0.9) + 0.025 * sin(x * 2.3 + 1.0);
-	// У берега откос круто уходит под воду: левее — глубокое озеро.
+	// У берега откос круто уходит под воду: левее — открытый океан.
 	return bank - 9.0 * (1.0 - smoothstep(-2.4, 0.6, x));
 }
 
@@ -182,14 +182,7 @@ float sky_flash() {
 }
 
 
-// Горы за озером: тёмные массы со снежными гребнями, сдвигаются медленнее склона.
-float mountain_height(float x) {
-	float mx = x * 0.28 + cam_center.x * 0.72 * 0.28;
-	return 0.4 + 2.4 * fbm(vec2(mx * 0.55, 1.3)) + 1.2 * pow(value_noise(vec2(mx * 1.4, 7.0)), 3.0);
-}
-
-
-// Небо, звёзды, звездопад и горы. sp — экранные доли (y вниз), wp — мир.
+// Небо, звёзды, звездопад и тучи над горизонтом. sp — экранные доли (y вниз), wp — мир.
 // sky — цвет неба под знаком: звезда и метеор рисуются поверх него, а не на чёрном.
 void background(vec2 sp, vec2 wp, vec2 star_cell, float cell_h, out vec3 col, out vec3 sky, out int ramp, out int level) {
 	float up = clamp(1.0 - sp.y, 0.0, 1.0);
@@ -229,41 +222,24 @@ void background(vec2 sp, vec2 wp, vec2 star_cell, float cell_h, out vec3 col, ou
 		level = m_level;
 	}
 
-	float mh = mountain_height(wp.x);
-	if (wp.y < mh) {
-		// Дальние горы тонут в дымке: светлее склона, чтобы тёмный силуэт героя читался на них.
-		float below = mh - wp.y;
+	// До горизонта ни земли, ни гор: над водой только фиолетовая полоса света и низкие тучи.
+	// Они бесконечно далеко и почти не сдвигаются вместе с камерой.
+	float rise = max(wp.y, 0.0);
+	float far_x = (wp.x - cam_center.x * 0.92) * 0.3;
+	vec3 horizon = vec3(0.13, 0.08, 0.26) * exp(-rise * 1.6);
+	sky += horizon;
+	col += horizon;
+	float cloud = smoothstep(0.44, 0.6, fbm(vec2(far_x - time * 0.008, rise * 1.8))) * smoothstep(1.8, 0.4, rise);
+	if (cloud > 0.4) {
 		ramp = RAMP_SNOW;
-		level = int(clamp(1.0 + fbm(wp * vec2(2.2, 4.0)) * 6.0, 1.0, 7.0));
-		col = mix(vec3(0.22, 0.20, 0.38), vec3(0.12, 0.12, 0.24), clamp(below * 0.6, 0.0, 1.0));
-		sky = col;
-		if (below < view_height / screen_px.y * cell_px.y * 1.2) {
-			// Снежный гребень ловит свет звёзд.
-			ramp = RAMP_PATH;
-			level = 9 + int(hash21(star_cell) * 4.0);
-			col = vec3(0.70, 0.74, 0.96);
-		}
+		level = int(clamp(1.0 + fbm(vec2(far_x * 4.0, rise * 7.0)) * 5.0, 1.0, 6.0));
+		col = mix(vec3(0.26, 0.22, 0.44), vec3(0.13, 0.12, 0.26), clamp(rise, 0.0, 1.0));
+		sky = vec3(0.07, 0.065, 0.15);
 	}
-	// Ельник на дальнем берегу: зубчатая тёмная кромка у самой воды.
-	// Каждая ель своей высоты, местами просветы — опушка, а не пила.
-	float tx = (wp.x * 0.35 + cam_center.x * 0.65 * 0.35) * 7.0;
-	float tree_id = floor(tx);
-	float tree_seed = hash21(vec2(tree_id, 14.0));
-	float local = fract(tx) - 0.5 + (hash21(vec2(tree_id, 3.0)) - 0.5) * 0.3;
-	float tree_h = tree_seed > 0.3 ? 0.14 + pow(tree_seed, 2.0) * 0.38 : 0.0;
-	float tree_w = 0.42 * (1.0 - clamp(wp.y / max(tree_h, 0.001), 0.0, 1.0));
-	float treeline = 0.12 + 0.06 * value_noise(vec2(tx * 0.7, 2.0));
-	bool tree = wp.y >= 0.0 && (wp.y < treeline || (wp.y < tree_h && abs(local) < tree_w));
-	if (tree) {
-		ramp = RAMP_EDGE;
-		level = wp.y < treeline ? 2 : (local < 0.0 ? 1 : 3);
-		col = vec3(0.11, 0.13, 0.22);
-		sky = vec3(0.06, 0.07, 0.13);
-	}
-	// Над озером стелется туман: светлая полоса у воды, медленно плывёт.
-	float mist = smoothstep(0.9, 0.0, abs(wp.y - 0.15)) * fbm(vec2(wp.x * 0.35 - time * 0.06, wp.y * 2.0));
-	sky += vec3(0.10, 0.10, 0.18) * mist;
-	col += vec3(0.10, 0.10, 0.18) * mist;
+	// Морская дымка стелется над самой водой и медленно плывёт.
+	float mist = smoothstep(0.5, 0.0, rise) * fbm(vec2(wp.x * 0.35 - time * 0.06, wp.y * 2.0));
+	sky += vec3(0.08, 0.08, 0.15) * mist;
+	col += vec3(0.08, 0.08, 0.15) * mist;
 }
 
 
@@ -343,7 +319,7 @@ bool figure_at(vec2 wp, vec2 cell, out vec3 col, out int ramp, out int level) {
 	vec3 albedo = vec3(0.45);
 	vec3 emissive = vec3(0.0);
 	figure_surface(mat, p, n, albedo, emissive, ramp);
-	// Свет: звёздное небо сверху-слева, холодный контур со стороны озера, тёплый отблеск снега снизу.
+	// Свет: звёздное небо сверху-слева, холодный контур со стороны океана, тёплый отблеск снега снизу.
 	vec3 sky_dir = normalize(vec3(-0.45, 0.8, 0.4));
 	vec3 lighting = vec3(0.58, 0.64, 0.86) * max(dot(n, sky_dir), 0.0);
 	lighting += vec3(0.16, 0.18, 0.28) * (0.55 + 0.45 * n.y);
@@ -389,25 +365,42 @@ void fragment() {
 
 	if (wp.y >= ground) {
 		if (wp.y < 0.0) {
-			// Озеро: тёмная вода отражает небо, горы и падающие звёзды, гладь чуть рябит.
+			// Океан: тёмная вода отражает небо и падающие звёзды, из глубины кадра катятся валы.
 			float depth = -wp.y;
-			vec2 mirror = vec2(wp.x + sin(wp.y * 9.0 + time * 1.4) * 0.06 * min(depth, 1.0), -wp.y);
+			float near = min(depth, 1.0);
+			// Перспектива: у горизонта валы тонкие и частые, к низу кадра широкие.
+			float far = 1.0 / (depth + 0.35);
+			float swell = sin(far * 9.0 + time * 0.75 + value_noise(vec2(wp.x * far * 0.35, far * 0.6)) * 4.0);
+			vec2 mirror = vec2(
+				wp.x + (sin(wp.y * 9.0 + time * 1.4) * 0.06 + swell * 0.14) * near,
+				max(depth + swell * 0.12 * near, 0.0)
+			);
 			vec2 msp = screen_of(mirror) / screen_px.y;
 			vec2 mcell = floor(screen_of(mirror) / cell_px);
 			mcell = vec2(cell.x, mcell.y);
 			vec3 mirror_sky;
 			background(msp, mirror, mcell, cell_h, col, mirror_sky, ramp, level);
-			col *= vec3(0.62, 0.68, 0.86);
-			under = mirror_sky * vec3(0.62, 0.68, 0.86);
+			vec3 tint = vec3(0.62, 0.68, 0.86) * (0.72 + 0.28 * swell);
+			col *= tint;
+			under = mirror_sky * tint;
 			backing = 0.62;
 			if (ramp == RAMP_SNOW || ramp == RAMP_DENSE || ramp == RAMP_PATH) {
 				ramp = RAMP_WATER;
 				level = min(level, 6);
 			}
-			if (mod(cell.y, 3.0) < 1.0 && hash21(vec2(floor(cell.x / 4.0), cell.y) + floor(time * 0.5 + grain)) < 0.18) {
+			// Гребни вала: рваная строка знаков, на самом верху пена.
+			float crest = swell * smoothstep(0.06, 0.5, depth);
+			if (mod(cell.y, 2.0) < 1.0 && crest > 0.76 && value_noise(vec2(cell.x * 0.07 + time * 0.15, cell.y * 0.4)) > 0.34) {
 				ramp = RAMP_RIPPLE;
-				level = 6;
-				col = vec3(0.36, 0.42, 0.60);
+				level = crest > 0.95 ? 8 : (hash21(vec2(floor(cell.x / 2.0), cell.y)) < 0.6 ? 5 : 6);
+				col = mix(vec3(0.34, 0.40, 0.60), vec3(0.76, 0.82, 0.98), smoothstep(0.85, 1.0, crest));
+			}
+			// Прибой: пена бьётся о подножие откоса, набегает и откатывается.
+			float surge = 0.5 + 0.5 * sin(time * 0.8 + wp.y * 2.0);
+			if (wp.y - ground < 0.14 + surge * 0.3 && hash21(vec2(floor(cell.x / 2.0), cell.y) + floor(time * 1.6 + grain)) < 0.7) {
+				ramp = RAMP_RIPPLE;
+				level = grain < 0.5 ? 8 : 5;
+				col = vec3(0.70, 0.76, 0.94) * (0.75 + surge * 0.3);
 			}
 		} else {
 			vec3 sky;

@@ -7,12 +7,15 @@ const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const AsciiMenu := preload("res://scripts/ui/ascii_menu.gd")
 const SaveBook := preload("res://scripts/save/save_book.gd")
 
-# Главный экран целиком из символов: иллюстрация с двумя героями, заголовок «ЦИКЛ / ДУШ»
-# в две строки, сложенный знаками по форме Cormorant Garamond, и меню моноширинной сеткой.
+# Главный экран целиком из символов: иллюстрация по главе, до которой дошёл игрок,
+# заголовок «ЦИКЛ / ДУШ» в две строки, сложенный знаками по форме Cormorant Garamond,
+# и меню моноширинной сеткой.
 
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const SCREEN_SHADER := preload("res://scripts/title/title_screen.gdshader")
-const ART := preload("res://assets/title/duo_moon.jpg")
+# В начале пути Безымянный один над океаном, со второй главы — двое под луной.
+const ART_FIRST_CHAPTER := preload("res://assets/title/nameless_ocean.jpg")
+const ART_SECOND_CHAPTER := preload("res://assets/title/duo_moon.jpg")
 # Тема главного экрана собрана генератором tools/compose_menu_theme.py.
 const THEME_MUSIC := preload("res://assets/music/menu_theme.ogg")
 const THEME_LOOP_START := 4 * 4 * 60.0 / 84.0
@@ -107,8 +110,9 @@ func _build_screen(atlas: Texture2D, cell: Vector2i) -> void:
 	screen_material = ShaderMaterial.new()
 	screen_material.shader = SCREEN_SHADER
 	screen_material.set_shader_parameter("atlas_tex", atlas)
-	screen_material.set_shader_parameter("art_tex", ART)
-	screen_material.set_shader_parameter("art_aspect", float(ART.get_width()) / ART.get_height())
+	var art: Texture2D = ART_SECOND_CHAPTER if SaveBook.reached_chapter() >= 2 else ART_FIRST_CHAPTER
+	screen_material.set_shader_parameter("art_tex", art)
+	screen_material.set_shader_parameter("art_aspect", float(art.get_width()) / art.get_height())
 	screen_material.set_shader_parameter("cell_px", Vector2(cell))
 	screen_material.set_shader_parameter("title_mask", mask_viewport.get_texture())
 	screen_material.set_shader_parameter("title_style", TITLE_STYLE)

@@ -60,7 +60,7 @@ const RUIN_WALLS: Array[Rect2] = [
 	Rect2(53.4, 45.2, 1.6, 1.6), Rect2(61.2, 45.2, 1.6, 1.6),
 ]
 
-# Раскладка мира: перекрёсток ASCII-ночи или тропа у озера из первой главы.
+# Раскладка мира: перекрёсток ASCII-ночи или тропа на острове из первой главы.
 var layout := &"crossroads"
 var spawn := SPAWN
 var keeper := KEEPER
@@ -94,7 +94,9 @@ var house_points: Array[Vector3] = []
 var town := Vector3(-1000.0, -1000.0, 0.0)
 var garden_on := true
 # Насколько земля поднимается от воды: у тропы к дому это заметный склон.
-var lake_rise := 0.0
+var shore_rise := 0.0
+# Вода не внутри эллипса pond_*, а снаружи: эллипс — остров, вокруг океан.
+var island := false
 # Направление взгляда героя при появлении.
 var spawn_yaw := 0.0
 
@@ -117,8 +119,8 @@ var _random := RandomNumberGenerator.new()
 
 func _init(world_layout: StringName = &"crossroads") -> void:
 	layout = world_layout
-	if layout == &"lake_trail":
-		_use_lake_trail()
+	if layout == &"island_trail":
+		_use_island_trail()
 	_noise.seed = 79
 	_noise.frequency = 0.06
 	_random.seed = 4117
@@ -128,9 +130,9 @@ func _init(world_layout: StringName = &"crossroads") -> void:
 	_build_props()
 
 
-# Тропа у озера: большое озеро на юго-западе, снежный склон, тропа через ельник
+# Тропа на острове: вокруг открытый океан, от берега снежный склон, тропа через ельник
 # в городок с каменными домиками. Улица идёт на север, в её конце библиотека.
-func _use_lake_trail() -> void:
+func _use_island_trail() -> void:
 	var nowhere := Vector2(-1000.0, -1000.0)
 	spawn = Vector2(49.0, 45.0)
 	spawn_yaw = deg_to_rad(-140.0)
@@ -141,8 +143,9 @@ func _use_lake_trail() -> void:
 	pier_rect = Vector4(-10.0, -10.0, -9.0, -9.0)
 	# Библиотека — каменное здание с башней в конце улицы, дверью к югу.
 	chapel = Vector2(88.0, 9.5)
-	pond_center = Vector2(30.0, 64.0)
-	pond_radii = Vector2(27.0, 21.0)
+	island = true
+	pond_center = Vector2(74.0, 28.0)
+	pond_radii = Vector2(44.0, 26.0)
 	routes = [[
 		Vector2(49, 45), Vector2(53, 40), Vector2(59, 37), Vector2(64, 33), Vector2(70, 31),
 		Vector2(77, 30.5), Vector2(83, 30), Vector2(88, 27.5), Vector2(88, 20), Vector2(88, 14),
@@ -160,7 +163,7 @@ func _use_lake_trail() -> void:
 	rocks = [Vector3(66.0, 35.5, 0.5), Vector3(73.0, 31.0, 0.4), Vector3(52.0, 47.0, 0.3)]
 	stumps = [Vector3(56.5, 41.5, 0.5)]
 	garden_on = false
-	lake_rise = 0.55
+	shore_rise = 0.8
 
 
 ## Места, с которыми можно говорить или действовать: в главе их нет.
@@ -280,7 +283,7 @@ func _box_distance(offset: Vector2, half: Vector2) -> float:
 func _pond_field(point: Vector2) -> float:
 	var offset := (point - pond_center) / pond_radii
 	var wobble := _noise.get_noise_2dv(point * 1.4) * 0.22 + _noise.get_noise_2dv(point * 4.5) * 0.09
-	return 1.0 - offset.length() + wobble
+	return (offset.length() - 1.0 if island else 1.0 - offset.length()) + wobble
 
 
 func _garden(point: Vector2) -> float:
@@ -314,7 +317,7 @@ func _build_terrain() -> void:
 		for x in range(texel_size.x):
 			var point := (Vector2(x, y) + Vector2(0.5, 0.5)) / TEXELS_PER_METER
 			var field := _pond_field(point)
-			var land := 0.30 + _noise.get_noise_2dv(point) * 0.32 + clampf(-field, 0.0, 2.5) * lake_rise
+			var land := 0.30 + _noise.get_noise_2dv(point) * 0.32 + clampf(-field, 0.0, 2.5) * shore_rise
 			var height := lerpf(land, -0.72, smoothstep(-0.12, 0.42, field))
 			# Городок стоит на ровной площадке: склон под ним выглажен.
 			var in_town := 1.0 - smoothstep(town.z * 0.75, town.z, point.distance_to(Vector2(town.x, town.y)))
@@ -335,7 +338,7 @@ func _build_terrain() -> void:
 # Высота площадки городка: склон в его центре без мелкого шума.
 func _town_level() -> float:
 	var field := _pond_field(Vector2(town.x, town.y))
-	return 0.30 + clampf(-field, 0.0, 2.5) * lake_rise
+	return 0.30 + clampf(-field, 0.0, 2.5) * shore_rise
 
 
 func _build_props() -> void:

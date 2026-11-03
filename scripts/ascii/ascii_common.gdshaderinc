@@ -93,6 +93,8 @@ uniform float keeper_yaw = 0.0;
 uniform vec3 wraith_pos = vec3(0.0);
 uniform float wraith_on = 0.0;
 uniform float tolls = 0.0;
+// Вода — открытый океан: валы с пеной вместо ряби, у кромки нет стеблей.
+uniform float sea_on = 0.0;
 uniform vec3 bell_pos = vec3(0.0);
 uniform float bell_swing = 0.0;
 uniform vec3 chapel_pos = vec3(0.0);

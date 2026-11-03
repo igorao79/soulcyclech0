@@ -67,7 +67,7 @@ void apply_particles(vec2 wc, vec3 ground, bool water, inout vec3 col, inout int
 		}
 	} else {
 		// Отдельные стебли заходят в воду: край не повторяет линию берега.
-		if (water) {
+		if (water && sea_on < 0.5) {
 			float reed = 1.0 + w.r / 0.22;
 			if (reed > 0.0 && hash21(wc + vec2(31.0, 8.0)) < reed * (0.1 + 1.1 * value_noise(ground.xz * 2.3))) {
 				col = mix(GRASS_DIM, GRASS_LIT, hash21(wc + vec2(3.0, 19.0))) * GRASS_STORE * 0.7;

@@ -9,11 +9,11 @@ const GlyphTitle := preload("res://scripts/ui/glyph_title.gd")
 const Ornament := preload("res://scripts/ui/ornament.gd")
 
 # Глава первая, «Звездопад».
-# 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном берегу над озером,
-#    над ним идёт звездопад. Под конец болид. Он тяжело встаёт, потягивается, оглядывается
-#    на озеро и небо, говорит пару слов — и неторопливо уходит по ровной тропе вдоль берега;
+# 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном берегу острова над
+#    океаном, над ним идёт звездопад. Под конец болид. Он тяжело встаёт, потягивается, оглядывается
+#    на океан и небо, говорит пару слов — и неторопливо уходит по ровной тропе вдоль берега;
 #    камера ведёт его, и кадр гаснет.
-# 2. Вид сверху со свободным управлением (движок ASCII-ночи, раскладка «тропа у озера»):
+# 2. Вид сверху со свободным управлением (движок ASCII-ночи, раскладка «тропа на острове»):
 #    он стоит на тропе у воды, вспоминает о смене в библиотеке, и игрок ведёт его через
 #    ельник в городок с каменными домиками, по улице к библиотеке.
 # 3. Библиотека изнутри (library_scene.gd): взять книгу с полки, сесть за стол — видение.
@@ -33,7 +33,7 @@ const NEXT_SCENE := "res://scenes/chapter_two.tscn"
 
 const BASE_FONT_SIZE := 8
 const SIT_X := 2.4
-# Сидя он смотрит на озеро и чуть от нас.
+# Сидя он смотрит на океан и чуть от нас.
 const YAW_SIT := -2.1
 const CUTSCENE_TIME := 15.0
 const STAND_TIME := 2.9
@@ -243,7 +243,7 @@ func _stretching() -> void:
 		_go(Beat.LOOK)
 
 
-# Оглядывается через плечо на озеро и небо.
+# Оглядывается через плечо на океан и небо.
 func _looking() -> void:
 	var t := clampf(beat_time / LOOK_TIME, 0.0, 1.0)
 	hero_yaw = lerp_angle(YAW_SIT, YAW_LOOK, _ease(t))
@@ -287,7 +287,7 @@ func _walking(delta: float) -> void:
 		_play_step()
 	var sway := 0.015 * sin(phase)
 	lean = lean.lerp(Vector2(sway, 0.045 * move + 0.01 * sin(phase * 2.0)), 1.0 - exp(-delta * 4.0))
-	# Голову и плечи чуть разворачивает к озеру, пока идёт.
+	# Голову и плечи чуть разворачивает к океану, пока идёт.
 	hero_yaw = lerp_angle(hero_yaw, YAW_WALK - 0.08 * sin(elapsed * 0.4), 1.0 - exp(-delta * 2.0))
 	if beat_time > WALK_TIME:
 		_go(Beat.TO_TOP)
@@ -310,7 +310,7 @@ func _to_top() -> void:
 		screen_layer.queue_free()
 		screen_material = null
 		demo = AsciiDemo.new()
-		demo.world_layout = &"lake_trail"
+		demo.world_layout = &"island_trail"
 		demo.chapter_mode = true
 		add_child(demo)
 		_go(Beat.TOP)

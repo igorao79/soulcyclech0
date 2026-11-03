@@ -9,6 +9,7 @@ const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const GlyphTitle := preload("res://scripts/ui/glyph_title.gd")
 const Ornament := preload("res://scripts/ui/ornament.gd")
 const TempleWake := preload("res://scripts/chapter/temple_wake.gd")
+const SaveBook := preload("res://scripts/save/save_book.gd")
 const TITLE_SCENE := "res://scenes/title.tscn"
 
 const BASE_FONT_SIZE := 8
@@ -31,6 +32,7 @@ var shown := ""
 
 func _ready() -> void:
 	get_tree().paused = false
+	SaveBook.reach_chapter(2)
 	var window := get_window()
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	window.title = "Цикл душ — Глава вторая"

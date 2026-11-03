@@ -19,6 +19,18 @@ static func _file() -> ConfigFile:
 	return file
 
 
+## До какой главы игрок уже доходил: по ней главный экран выбирает оформление.
+static func reached_chapter() -> int:
+	return int(_file().get_value("progress", "chapter", 1))
+
+
+static func reach_chapter(chapter: int) -> void:
+	var file := _file()
+	if chapter > int(file.get_value("progress", "chapter", 1)):
+		file.set_value("progress", "chapter", chapter)
+		file.save(PATH)
+
+
 ## Записанный том или пустой словарь.
 static func read(tome: int) -> Dictionary:
 	var file := _file()
