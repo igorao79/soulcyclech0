@@ -9,8 +9,6 @@ const GlyphTitle := preload("res://scripts/ui/glyph_title.gd")
 const Ornament := preload("res://scripts/ui/ornament.gd")
 
 # Глава первая, «Звездопад».
-# 0. Пробуждение в храме от первого лица (temple_wake.gd): красная комната, меч в столбе
-#    света; выйти через раздвижные двери.
 # 1. Заставка сбоку (chapter_one.gdshader): Безымянный сидит на снежном берегу над озером,
 #    над ним идёт звездопад. Под конец болид. Он тяжело встаёт, потягивается, оглядывается
 #    на озеро и небо, говорит пару слов — и неторопливо уходит по ровной тропе вдоль берега;
@@ -24,13 +22,14 @@ const Ornament := preload("res://scripts/ui/ornament.gd")
 const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const AsciiDemo := preload("res://scripts/ascii/ascii_demo.gd")
 const LibraryScene := preload("res://scripts/chapter/library_scene.gd")
-const TempleWake := preload("res://scripts/chapter/temple_wake.gd")
 const SaveBook := preload("res://scripts/save/save_book.gd")
 const SCREEN_SHADER := preload("res://scripts/chapter/chapter_one.gdshader")
 # Зимняя тема собрана генератором tools/compose_winter_theme.py: петля начинается после вступления.
 const THEME_MUSIC := preload("res://assets/music/snowbound_crossroads.ogg")
 const THEME_LOOP_START := 4 * 3 * 60.0 / 66.0
 const TITLE_SCENE := "res://scenes/title.tscn"
+# После «продолжение следует» — вторая глава.
+const NEXT_SCENE := "res://scenes/chapter_two.tscn"
 
 const BASE_FONT_SIZE := 8
 const SIT_X := 2.4
@@ -71,7 +70,7 @@ const LINES: Array[Dictionary] = [
 	{"speaker": &"nameless", "text": "Смена в библиотеке до рассвета. Через ельник — успею."},
 ]
 
-enum Beat { CARD, WAKE, SITTING, STANDING, STRETCH, LOOK, TALK, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
+enum Beat { CARD, SITTING, STANDING, STRETCH, LOOK, TALK, TURNING, WALKING, TO_TOP, TOP, TO_LIBRARY, LIBRARY, ENDING }
 
 const SILVER := Color(0.86, 0.89, 0.98)
 const BONE := Color(0.95, 0.91, 0.84)
@@ -86,7 +85,6 @@ var serif: Font
 var music: AudioStreamPlayer
 var demo: AsciiDemo
 var library: Node
-var temple: Node
 var card_title: Control
 var card_shown := ""
 var music_tween: Tween
@@ -148,10 +146,9 @@ func _process(delta: float) -> void:
 	beat_time += delta
 	match beat:
 		Beat.CARD:
+			fade = clampf(1.0 - (beat_time - 3.0) / 2.0, 0.0, 1.0)
 			if beat_time > 4.4:
-				_enter_temple()
-		Beat.WAKE:
-			pass
+				_go(Beat.SITTING)
 		Beat.SITTING:
 			fade = clampf(1.0 - (beat_time + 1.4) / 2.0, 0.0, 1.0)
 			if big_meteor_at < 0.0 and beat_time > CUTSCENE_TIME * 0.66:
@@ -343,22 +340,6 @@ func _to_library() -> void:
 		_enter_library()
 
 
-# После карточки главы — пробуждение в храме; озеро ждёт за ним, кадр берега тёмный.
-func _enter_temple() -> void:
-	temple = TempleWake.new()
-	temple.finished.connect(_leave_temple)
-	add_child(temple)
-	_go(Beat.WAKE)
-
-
-func _leave_temple() -> void:
-	temple.queue_free()
-	temple = null
-	fade = 1.0
-	_start_music()
-	_go(Beat.SITTING)
-
-
 func _enter_library() -> void:
 	library = LibraryScene.new()
 	library.music = music
@@ -374,7 +355,7 @@ func _ending() -> void:
 	end_alpha = clampf((beat_time - 1.8) / 0.8, 0.0, 1.0) * clampf((5.6 - beat_time) / 0.8, 0.0, 1.0)
 	if beat_time > 6.0:
 		set_process(false)
-		get_tree().change_scene_to_file(TITLE_SCENE)
+		get_tree().change_scene_to_file(NEXT_SCENE)
 
 
 func _walking_on(delta: float) -> void:
@@ -524,15 +505,14 @@ func _build_audio() -> void:
 	music = AudioStreamPlayer.new()
 	music.stream = looped
 	music.bus = &"Music"
-	# Глава начинается под гул колокола с главного экрана; в храме музыки нет,
-	# она входит тихо и нарастает, когда кадр выходит к озеру.
-	music.volume_db = -60.0
+	# Глава начинается под гул колокола с главного экрана: музыка входит тихо и нарастает.
+	music.volume_db = -40.0
 	add_child(music)
 	music.play()
 	step_player = AudioStreamPlayer.new()
 	step_player.bus = &"SFX"
 	add_child(step_player)
-	# Музыка входит, когда глава выходит к озеру: в храме тишина.
+	_start_music()
 
 
 func _start_music() -> void:

@@ -18,7 +18,7 @@ const ARCH_HIDE := 0.4
 
 const TITLE_SCENE := "res://scenes/title.tscn"
 const GAMEPLAY_SCENES: Array[String] = [
-	"res://scenes/chapter_one.tscn", "res://scenes/main.tscn", "res://scenes/ascii_demo.tscn",
+	"res://scenes/chapter_one.tscn", "res://scenes/chapter_two.tscn", "res://scenes/main.tscn", "res://scenes/ascii_demo.tscn",
 ]
 const VEIL_SHADER := """
 shader_type canvas_item;
