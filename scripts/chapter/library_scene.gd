@@ -7,10 +7,10 @@ extends Node
 # 2. Он начинает читать — кадр сгорает красным шумом от середины, как «Начать путь»
 #    на главном экране, бьёт колокол, и нас уносит в видение (vision.gdshader): двойник
 #    с чёрным лицом, звёздными глазами и белыми полосами по телу парит в пустой тьме.
-#    Слов нет — рядом раскрыта книга «Цикл душ» с названиями томов: вписан пока
-#    только первый, «Звездопад». Сохранения делаются сами на чекпоинтах (save_book.gd),
-#    а чекпоинтов пока нет.
-# Книга держится недолго (E / Enter / щелчок — сразу дальше), сцена гаснет и сообщает finished.
+#    Рядом раскрыта книга «Цикл душ» с названиями томов: вписан пока только первый,
+#    «Звездопад». С каждым чтением бог заводит новый разговор (god_voice.gd).
+#    Сесть за стол — чекпоинт: каждый раз путь сам вписывается в том (save_book.gd).
+# Договорив, бог ещё миг держит книгу (E / Enter / щелчок — сразу дальше), сцена гаснет и сообщает finished.
 
 signal finished
 
@@ -18,6 +18,8 @@ const FontAtlas := preload("res://scripts/ascii/ascii_font_atlas.gd")
 const UiStyle := preload("res://scripts/ui/ui_style.gd")
 const DialogueView := preload("res://scripts/ui/dialogue_view.gd")
 const TomeBook := preload("res://scripts/ui/tome_book.gd")
+const GodVoice := preload("res://scripts/ui/god_voice.gd")
+const SaveBook := preload("res://scripts/save/save_book.gd")
 const LIBRARY_SHADER := preload("res://scripts/chapter/library.gdshader")
 const VISION_SHADER := preload("res://scripts/chapter/vision.gdshader")
 const VISION_ART := preload("res://assets/chapter/vision.jpg")
@@ -49,15 +51,23 @@ const REACH := 0.55
 const SIT_TIME := 1.3
 const OUTRO_TIME := 1.1
 const MUSIC_FADE := 2.5
-# Когда в видении раскрывается книга и сколько она держится до второй главы.
+# Когда в видении раскрывается книга; сколько висит реплика бога и книга после разговора.
 const BOOK_AT := 4.6
-const BOOK_TIME := 5.0
-# Оглавление книги: вписан только первый том.
+const GOD_LINE_HOLD := 2.4
+const BOOK_AFTER := 1.4
+# Оглавление книги: том вписан, только когда игрок дошёл до этой главы.
 const VOLUMES: Array[Dictionary] = [
 	{"numeral": "I", "title": "Звездопад"},
-	{"numeral": "II", "title": ""},
+	{"numeral": "II", "title": "Пробуждение"},
 	{"numeral": "III", "title": ""},
 ]
+# Что записывает чекпоинт за столом и сколько висит подпись об этом.
+const SAVE_CHAPTER := 1
+const SAVE_TITLE := "Звездопад"
+const SAVE_PLACE := &"library"
+const SAVE_PLACE_NAME := "библиотека"
+const SAVED_NOTE := "путь вписан в том I"
+const SAVED_NOTE_TIME := 2.6
 # Взгляд вправо и чуть на зрителя; за столом — строго на столешницу.
 const FACE_RIGHT := PI * 0.5 - 0.4
 const FACE_LEFT := -PI * 0.5 + 0.4
@@ -74,6 +84,7 @@ const READ_LINES: Array[Dictionary] = [
 	{"speaker": &"nameless", "text": "Пусто… Нет. Буквы проступают."},
 ]
 const SPEAKERS := {
+	&"god": ["Бог", Color(1.0, 0.9, 0.66)],
 	&"nameless": ["Безымянный", Color(0.86, 0.89, 0.98)],
 }
 
@@ -119,6 +130,9 @@ var lines: Array = []
 var line_index := 0
 var line_progress := 0.0
 var _after_lines := Callable()
+var line_hold := 0.0
+var god_done_at := -1.0
+var saved_note := 0.0
 
 
 func _ready() -> void:
@@ -183,6 +197,7 @@ func _process(delta: float) -> void:
 	delta = minf(delta, 0.05)
 	elapsed += delta
 	state_time += delta
+	saved_note = maxf(saved_note - delta, 0.0)
 	var talking := not lines.is_empty()
 	if talking:
 		_advance_lines(delta)
@@ -222,6 +237,8 @@ func _process(delta: float) -> void:
 				# Кладёт книгу на стол — и раскрывает её.
 				holding = false
 				book_open = true
+				SaveBook.checkpoint(SAVE_CHAPTER, SAVE_TITLE, SAVE_PLACE, SAVE_PLACE_NAME)
+				saved_note = SAVED_NOTE_TIME
 				_go(State.OPENING)
 		State.OPENING:
 			# Обложка поднимается медленно, переваливает через корешок и ложится.
@@ -295,7 +312,7 @@ func _fade_music() -> void:
 
 
 # Видение: сначала из темноты загораются глаза, потом проступает всё остальное,
-# камера медленно подходит. Без слов: рядом раскрывается книга — точка сохранения.
+# камера медленно подходит. Рядом раскрывается книга — точка сохранения, и бог заговаривает.
 func _vision() -> void:
 	var t := state_time
 	vision_material.set_shader_parameter("eyes", clampf((t - 0.8) / 1.6, 0.0, 1.0))
@@ -304,7 +321,8 @@ func _vision() -> void:
 	vision_material.set_shader_parameter("zoom", lerpf(1.0, 1.35, push * push * (3.0 - 2.0 * push)))
 	if t > BOOK_AT and save_menu == null:
 		_open_save_menu()
-	if t > BOOK_AT + BOOK_TIME:
+		_say(GodVoice.greet(SaveBook.reached_chapter()), func() -> void: god_done_at = state_time)
+	if god_done_at >= 0.0 and t > god_done_at + BOOK_AFTER:
 		_go(State.OUT)
 
 
@@ -315,15 +333,27 @@ func _open_save_menu() -> void:
 	save_menu.cell = glyph_cell
 	# Слева, над пустой тьмой: справа парит двойник.
 	save_menu.center = Vector2(0.29, 0.5)
-	save_menu.tomes = VOLUMES
+	save_menu.tomes = written_volumes(SaveBook.reached_chapter())
 	save_menu.closable = false
 	save_menu.activated.connect(_on_save_menu)
 	overlay.get_parent().add_child(save_menu)
 	save_menu.open()
 
 
+## Оглавление как его видит игрок: главы, до которых он не дошёл, ещё не написаны.
+static func written_volumes(reached: int) -> Array[Dictionary]:
+	var volumes: Array[Dictionary] = []
+	for index in range(VOLUMES.size()):
+		var volume: Dictionary = VOLUMES[index].duplicate()
+		if index >= reached:
+			volume["title"] = ""
+		volumes.append(volume)
+	return volumes
+
+
+# Пока бог говорит, нажатия листают его реплики, а не уводят из видения.
 func _on_save_menu(_id: StringName) -> void:
-	if state == State.VISION:
+	if state == State.VISION and lines.is_empty() and god_done_at >= 0.0:
 		_go(State.OUT)
 
 
@@ -403,13 +433,19 @@ func _advance_lines(delta: float) -> void:
 	var length := String(lines[line_index]["text"]).length()
 	var was_done := line_progress >= length
 	line_progress = minf(line_progress + delta * 40.0, length)
-	if not Input.is_action_just_pressed(&"interact"):
+	# В видении бог не ждёт нажатия: допечатал, подержал реплику и говорит дальше.
+	var auto := false
+	if state == State.VISION and was_done:
+		line_hold += delta
+		auto = line_hold >= GOD_LINE_HOLD
+	if not auto and not Input.is_action_just_pressed(&"interact"):
 		return
 	if not was_done:
 		line_progress = length
 		return
 	line_index += 1
 	line_progress = 0.0
+	line_hold = 0.0
 	if line_index >= lines.size():
 		lines = []
 		var after := _after_lines
@@ -421,6 +457,12 @@ func _advance_lines(delta: float) -> void:
 func _draw_overlay() -> void:
 	if get_tree().paused:
 		return
+	if saved_note > 0.0:
+		var size := overlay.get_rect().size
+		var note_size := roundi(16.0 * size.y / UiStyle.LOGICAL_HEIGHT)
+		var note_alpha := clampf(saved_note / 0.8, 0.0, 1.0)
+		overlay.draw_string(mono, Vector2(size.x * 0.03, size.y * 0.06), SAVED_NOTE,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, note_size, Color(0.86, 0.89, 0.98, 0.8 * note_alpha))
 	if not lines.is_empty():
 		var line: Dictionary = lines[line_index]
 		var speaker: Array = SPEAKERS.get(line["speaker"], SPEAKERS[&"nameless"])

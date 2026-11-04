@@ -150,7 +150,7 @@ func _build_ui() -> void:
 	settings_menu.hide()
 	ui_root.add_child(settings_menu)
 
-	# Сохранения делаются сами на чекпоинтах (save_book.gd). Пока чекпоинтов нет — список пуст.
+	# Сохранения делаются сами на чекпоинтах (save_book.gd): пока стола не было, список пуст.
 	tomes_menu = AsciiMenu.new()
 	tomes_menu.heading = "Сохранения"
 	tomes_menu.heading_size = 24.0
